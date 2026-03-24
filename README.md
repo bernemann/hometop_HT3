@@ -12,7 +12,7 @@ Most everything needed for your heater-system to be shown at your 'hometop' ->
 - [Software Installation](#softwareinstallation)
 - [Changelog](./Changelog.md)
 - [Documentation](#docu)
-- [Importent notes](#notes)
+- [Important notes](#notes)
 
 
 ## Introduction<a name="intro"></a>
@@ -203,9 +203,9 @@ For project - details see the documentation (folder: **`~/HT3/docu`** ), the wik
 * Software-forum:
 [HT-Software](https://www.mikrocontroller.net/topic/324673#new)
 
-## Importent notes<a name="notes"></a>
+## Important notes<a name="notes"></a>
 
-#### Importent notes:
+#### Important notes:
 The reproduction and the commissioning of the adaptations is at your own risk and the description and software do not claim to be complete. A change of software modules and hardware descriptions at any time is possible without notice. Warranty, liability and claims by malfunction of heating or adaptation are hereby expressly excluded.
 
 #### Wichtiger Hinweis:
