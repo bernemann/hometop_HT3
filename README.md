@@ -4,7 +4,7 @@
 Most everything needed for your heater-system to be shown at your 'hometop' -> 
 *pimp your heater*.
 
-**Table of Contents**
+**Table of Content**
 
 - [Introduction](#intro)
 - [Used Hardware](#hardware)
@@ -202,6 +202,8 @@ For project - details see the documentation (folder: **`~/HT3/docu`** ), the wik
 [HT-Boards](https://www.mikrocontroller.net/topic/317004#new)
 * Software-forum:
 [HT-Software](https://www.mikrocontroller.net/topic/324673#new)
+
+[Short intro](./HT3/docu/Intro.md)
 
 ## Important notes<a name="notes"></a>
 
