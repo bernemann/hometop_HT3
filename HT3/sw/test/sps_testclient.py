@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2017 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2017 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,15 +18,16 @@
 #
 #################################################################
 # Ver:0.1    / Datum 20.06.2017
+# Ver:0.2    / 2026-03-26 input modified for accessname input.
 #################################################################
 ######
-# This testfile can be used as an example for communication 
+# This testfile can be used as an example for communication
 #   with the running 'ht_collgate' and to getting decoded heater-data
 #   with short commands.
 #   This commands you can implement in your SPS-source and running
 #   that application for getting data from your heater-system.
 #
-# Keep in mind that you have to enable the SPS-Interface in the 
+# Keep in mind that you have to enable the SPS-Interface in the
 # ht_collgate config-file (restart of ht_collgate is required).
 #
 ################################
@@ -59,15 +60,24 @@ class csps_testclient(threading.Thread):
         print("   20, 21, 22, 23, 24: used as accessname - commands")
         print("   88 := this help-txt")
         print("   90 := cmd-map output to csv-file in ~/HT3/sw/var/log")
+        print("  or accessname - input like: ch_Tflow_desired")
+        print("   accessnames see csv-file: 'sps_accessname_cmdmap.csv' in ~/HT3/sw/var/log")
+        print("")
 
     def run(self):
         self.__helptxt()
         try:
-            self.__socket.connect((SPS_server_IP, self.__tcp_port))
+          self.__socket.connect((SPS_server_IP, self.__tcp_port))
 
-            while True:
-                nachricht=""
-                auswahl = input("Auswahl (99 := quit): ")
+          while True:
+            nachricht=""
+            auswahl = input("Auswahl (99 := quit): ")
+            print("auswahl:{}".format(auswahl))
+            if str(auswahl) == '99':
+                print("Ende")
+                break
+            try:
+              if int(auswahl) in range(0,98):
                 # SPS short commands to ht_collgate
                 if auswahl == '0':
                     nachricht="A00"
@@ -104,27 +114,26 @@ class csps_testclient(threading.Thread):
                     nachricht="S09"
                 if auswahl == '98':
                     nachricht="bad_command"
-                if len(nachricht) > 1:
-                    print("send     -> :{0}".format(nachricht))
-                    self.__socket.sendall(bytes(nachricht, "utf-8"))
-                    antwort = self.__socket.recv(self.__buffer_size)
-                    print ("response <- :{0}".format(antwort.decode()))
-                else:
-                    if auswahl == '99':
-                        print("Ende")
-                        break
-                    if auswahl == '88':
-                        self.__helptxt()
-                    else:
-                        print("unknown command, nothing to send")
-        except:
-            errorstr = "client socket-error"
+                if auswahl == '88':
+                    self.__helptxt()
+            except:
+                # send input as requested data
+                nachricht=str(auswahl)
+
+            if len(nachricht) > 1:
+                print("send     -> :{0}".format(nachricht))
+                self.__socket.sendall(bytes(nachricht, "utf-8"))
+                antwort = self.__socket.recv(self.__buffer_size)
+                print ("response <- :{0}".format(antwort.decode()))
+
+        except Exception as e:
+            errorstr = "sps_testclient;Error;{}".format(e)
             print(errorstr)
-            
-           
+
+
         finally:
             self.__socket.close()
-            
+
 
 #--- class csps_testclient end ---#
 ################################################
@@ -134,5 +143,5 @@ class csps_testclient(threading.Thread):
 if __name__ == "__main__":
     sps_if=csps_testclient()
     sps_if.start()
-    
+
 

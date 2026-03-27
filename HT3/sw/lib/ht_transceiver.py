@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2015 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2015 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,10 +31,10 @@ class ctransceiver():
     """
     def __init__(self, clienthandle):
         self._clienthandle=clienthandle
-        
+
     def __del__(self):
         pass
-    
+
     def cfg_mode(self, mode):
         error=None
         # transceiver-mode :  '#',<length>,'!','C',1,int(mode)

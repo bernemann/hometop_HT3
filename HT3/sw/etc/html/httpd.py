@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2013 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2013 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by

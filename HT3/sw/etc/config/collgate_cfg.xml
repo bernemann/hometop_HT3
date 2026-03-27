@@ -3,7 +3,7 @@
 <!--
  ##
  #   #################################################################
- ## Copyright (c) 2017 Norbert S. <junky-zs@gmx.de>
+ ## Copyright (c) 2017 Norbert S. <junky-zsatgmxdotde>
  #
  # This program is free software: you can redistribute it and/or modify
  # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
  #  Configuration-file for 'ht_collgate'-daemon and attached clients.
  #
  #  The 'ht_collgate-server' is used for reading ht-busdata in RAW-format.
- #  It's connected as ht_proxy-client to the ht_proxy-server. 
+ #  It's connected as ht_proxy-client to the ht_proxy-server.
  #  The server decodes that received data and stores this to memory.
  #  Depending on 'enable-flag' the decoded data are send to interface  clients.
  #

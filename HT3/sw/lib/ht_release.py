@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2021 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2021 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #               HomeAssistant interface-daemon added.
 #               Issue: #14
 # Ver:0.4    / 2021-02-25
+# Ver:0.5    / 2026-03-09 DHW modifications.
 #################################################################
 
-VERSION = "0.8"
+VERSION = "0.9"

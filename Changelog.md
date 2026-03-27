@@ -1,4 +1,12 @@
 ## Changelog
+## 0.9
+`2024-03-27` 
+- `reason`: Issue: #33 DHW handling added.  
+- `config`: all config-files are modified.  
+- `moduls`: all modules are modified.  
+- `docu  `: `~/HT3/sw/etc/html/HT3-Bus_Telegramme.html` updated.  
+- `important note`: it's NOT required to recreate new databases if already available.  
+
 ## 0.8
 `2024-01-14` 
 - `reason`: Issues: #30 and #31.  
@@ -25,7 +33,7 @@
 - `reason`: Issues: #21, #24 and #28.  
 - `moduls`: all are modified.  
 - `config`: all are modified and have new content.  
-- `importend notes`: it's required to recreate the databases. The old once's aren't compatible anymore.  
+- `important notes`: it's required to recreate the databases. The old once's aren't compatible anymore.  
 
 ## 0.6.3
 `2023-03-22` 
@@ -138,7 +146,7 @@
   -     you must have a lot of free space on your drive (> 1 GB in folder: /tmp) doing this upgrade.
   -     the upgrade takes a lot of time do be finished.
   -     if this space isn't available, remove the old database and create a new rrdtool-database.
-- `importend notice` the current sqlite-database must be deleted or renamed and has to be recreated for this release:0.2
+- `important notice` the current sqlite-database must be deleted or renamed and has to be recreated for this release:0.2
    using tool: ./create_databases.py.
 
 ## ~~0.1.10~~

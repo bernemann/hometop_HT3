@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2013 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2013 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -371,8 +371,8 @@ class cdb_rrdtool(ht_utils.clog):
                     ):
         """calling the rrdtool-draw script to create rrdtool-drawings"""
         [hc1_mixer, hc2_mixer, hc3_mixer, hc4_mixer] = mixer_flags
-        debugstr = "cdb_rrdtool.create_draw();path2db:{0};path2draw:{1};hc_count:{2};Contr.type:{3};mixer_flags:{4};hydrlic_sw:{5};solar_flag:{6};second_source:{7}".format(path_2_db, 
-                            path_2_draw, hc_count, controller_type_nr, 
+        debugstr = "cdb_rrdtool.create_draw();path2db:{0};path2draw:{1};hc_count:{2};Contr.type:{3};mixer_flags:{4};hydrlic_sw:{5};solar_flag:{6};second_source:{7}".format(path_2_db,
+                            path_2_draw, hc_count, controller_type_nr,
                             mixer_flags, hydsw, solar_flag, second_source_flag)
         self._logging.debug(debugstr)
         AbsPathandFilename = os.path.abspath(os.path.normcase('./etc/rrdtool_draw.pl'))

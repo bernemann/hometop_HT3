@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2013 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2013 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -38,9 +38,10 @@
 # Ver:0.3.2  / Datum 03.12.2019 Issue:'Deprecated property InterCharTimeout #7'
 #                                port.setInterCharTimeout() removed
 # Ver:0.4    / Datum 24.10.2022 logging header-startline and release-output added.
+# Ver:0.5    / 2026-03-21       Ccyclic_tx_requests class and thread added.
 #################################################################
 
-import sys
+import logging
 import os
 import serial
 import _thread
@@ -50,12 +51,13 @@ import ht_discode
 import gui_worker
 import db_sqlite
 from ht_proxy_if import cht_socket_client as ht_proxy_client
-import ht_utils
-import logging
 import db_rrdtool
 import time
-import ht_const
 import ht_release
+import ht_const
+import ht_proxy_if
+import threading
+import ht_yanetcom
 
 
 class ht3_cworker(object):
@@ -101,8 +103,6 @@ class ht3_cworker(object):
         try:
             if logfilename_in != None:
                 ht3_cworker._gdata.logfilename(logfilename_in)
-            if loglevel_in != None:
-                loglevel = ht3_cworker._gdata.loglevel(loglevel_in)
 
             self._loglevel = ht3_cworker._gdata.loglevel()
             logfilepath = ht3_cworker._gdata.logfilepathname()
@@ -312,6 +312,13 @@ class ht3_cworker(object):
 
         rawdata = ht_discode.cht_discode(self.__port, ht3_cworker._gdata, debug, self.__filehandle, logger=self._logging)
 
+        cyclic_tx_requests = Ccyclic_tx_requests(self.__port, ht3_cworker._gdata, debug = debug, logging = self._logging)
+        try:
+          cyclic_tx_requests.start()
+        except Exception as e:
+          errorstr = "Ccyclic_tx_requests.start(); Error;{}".format(e)
+          self._logging.critical(errorstr)
+
         while self.__threadrun:
             # get the decoded values and store them to db if enabled.
             (nickname, value) = rawdata.discoder()
@@ -367,6 +374,139 @@ class ht3_cworker(object):
         database.close()
 
 #--- class ht3_cworker end ---#
+
+class Ccyclic_tx_requests(threading.Thread):
+  """
+  """
+  def __init__(self, port, data, logging = None, debug = 0, startup_wait_sec = 60):
+    threading.Thread.__init__(self)
+    self.__thread_run = True
+    self.__port = port
+    self.__data = data
+    self.__wait_time = startup_wait_sec
+    self.__wait_timer = 0
+    self.__txif  = ht_yanetcom.cyanetcom(self.__port)
+    self._logging = logging
+    self.__debug  = debug
+
+  def __del__(self):
+    """
+    """
+    self.stop()
+
+  def stop(self):
+    self.__thread_run = False
+    if self.__debug: print("Ccyclic_tx_requests()-thread stopped")
+
+  def run(self):
+    # check requirements at first
+    if self.__port == None:
+      # no start of thread required
+      self.stop()
+      tempstring = "Ccyclic_tx_requests()-thread not started, port:None"
+      self._logging.info(tempstring)
+      return
+    else:
+      if not isinstance(self.__port, (ht_proxy_if.cht_socket_client, serial.serialposix.Serial)):
+        self.stop()
+        errorstr = "Ccyclic_tx_requests()-thread not started, port: instance wrong"
+        self._logging.critical(errorstr)
+        return
+
+    tempstring = "Ccyclic_tx_requests()-thread started"
+    self._logging.debug(tempstring)
+
+    # checking for ht_transceiver availability at least for 90 seconds
+    #  if no ht_transceiver is found, terminate the thread
+    time_stamp = time.time()
+    ht_transceiver = False
+    while (time.time() - time_stamp) < 30:
+      ht_transceiver = self.__data.transceiver_available()
+      if ht_transceiver:
+        break
+      time.sleep(1.0)
+    if ht_transceiver:
+      tempstring = "Ccyclic_tx_requests() transceiver found"
+      self._logging.debug(tempstring)
+    else:
+      tempstring = "Ccyclic_tx_requests() terminated, no transceiver found"
+      self._logging.debug(tempstring)
+      self.stop()
+
+    # wait a bit before request data
+    time.sleep(20)
+    try:
+      self.__txif.request_data(msg_id=6, target_deviceadr=0x10, bytes_requested=20)
+      time.sleep(1)
+      self.__txif.request_data(msg_id=7, target_deviceadr=8, bytes_requested=20)
+      time.sleep(1)
+      self.__txif.request_data(msg_id=2, target_deviceadr=0x10, bytes_requested=10)
+      time.sleep(1)
+      self.__txif.request_data(msg_id=2, target_deviceadr=8, bytes_requested=10)
+      time.sleep(1)
+    except Exception as e:
+      errorstr = "Ccyclic_tx_requests();Error;{}".format(e)
+      self._logging.critical(errorstr)
+
+    self.__wait_timer = self.__wait_time
+    # run endless until stop()
+    while self.__thread_run:
+      try:
+        if self.__data.controller_type_EMS():
+          # requests for Cxyz-Controller
+          try:
+            self.__txif.request_data(msg_id=757, bytes_requested=20)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=795, bytes_requested=20)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=51, bytes_requested=20)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=51, target_deviceadr=8, bytes_requested=20)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=53, target_deviceadr=0x10, msg_offset=3, bytes_requested=1)
+            time.sleep(1)
+            if self.__data.IsSolarAvailable():
+              self.__txif.request_data(msg_id=910, bytes_requested=20)
+              time.sleep(1)
+          except Exception as e:
+            errorstr = "Ccyclic_tx_requests();Error;{}".format(e)
+            self._logging.critical(errorstr)
+        else:
+          # requests for Fxyz-Controller
+          try:
+            self.__txif.request_data(msg_id=55, bytes_requested=10)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=277, bytes_requested=20)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=39, bytes_requested=8)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=53, bytes_requested=20)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=27, bytes_requested=10)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=52, bytes_requested=20)
+            time.sleep(1)
+            self.__txif.request_data(msg_id=51, bytes_requested=20)
+            time.sleep(1)
+            if self.__data.IsSolarAvailable():
+              self.__txif.request_data(msg_id=259, bytes_requested=20)
+              time.sleep(1)
+          except Exception as e:
+            errorstr = "Ccyclic_tx_requests();Error;{}".format(e)
+            self._logging.critical(errorstr)
+      except Exception as e:
+        errorstr = "Ccyclic_tx_requests();Error;{}".format(e)
+        self._logging.critical(errorstr)
+
+      # sleep a bit
+      while self.__wait_timer > 0 and self.__thread_run:
+        self.__wait_timer -= 1
+        time.sleep(1)
+      self.__wait_timer = self.__wait_time
+
+    tempstring = "Ccyclic_tx_requests()-thread end"
+    self._logging.debug(tempstring)
+#--- class Ccyclic_tx_requests end ---#
 
 ### Runs only for test ###########
 if __name__ == "__main__":

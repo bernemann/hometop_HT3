@@ -3,7 +3,7 @@
 <!--
  ##
  #   #################################################################
- ## Copyright (c) 2015 Norbert S. <junky-zs@gmx.de>
+ ## Copyright (c) 2015 Norbert S. <junky-zsatgmxdotde>
  #
  # This program is free software: you can redistribute it and/or modify
  # it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@
  #  Importend:
  #   If you are using the ht_proxy - Server, then the interface
  #   has to be set to: SOCKET (it's default set)
- #    see config-file: HT3_db_cfg.xml 
+ #    see config-file: HT3_db_cfg.xml
  #     and paramter  :<comm_type>SOCKET</comm_type>
  #
  #  required comport-configurations for 'proxy-server'
@@ -112,7 +112,7 @@
    #   anyway type 'RX' can be used x-times as client, this is only
    #   limited by the used hardware (RaspberryPi).
   -->
-  <proxy_client devicename="RX">      
+  <proxy_client devicename="RX">
     <serveraddress>localhost</serveraddress>
     <servername></servername>
     <portnumber>48088</portnumber>
@@ -120,7 +120,7 @@
     <devicetype>RX</devicetype>
   </proxy_client>
 
-  <proxy_client devicename="MODEM">      
+  <proxy_client devicename="MODEM">
     <serveraddress>localhost</serveraddress>
     <servername></servername>
     <portnumber>48088</portnumber>

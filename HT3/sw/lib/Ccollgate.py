@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2017 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2017 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,28 +24,32 @@
 #                                port.setInterCharTimeout() removed
 # Ver:0.4    / 2023-10-06  logitems matching with the values now exported.
 # Ver:0.4.1  / 2023-11-20  Exception logging modified.
+# Ver:0.5    / 2026-03-11  setDaemon() call deprecated,
+#                          set Thread-flag 'daemon' to 'True' instead.
+#                          cht_if_tx_data class: __cmd_parser() added.
+#                          __send_data_2_ht_bus() modified for DHW-handling.
 #################################################################
 
-import sys
-import os
-import time
-import serial
-import threading
-import socket
-import queue
-import data
-import ht_discode
-from ht_proxy_if import cht_socket_client as ht_proxy_client
-import ht_utils
 import logging
+import os
+import queue
+import sys
+import threading
+import time
 import xml.etree.ElementTree as ET
-import SPS_if
+import data
 import ht_const
+import ht_discode
+import ht_utils
+import ht_yanetcom
+import serial
+import SPS_if
+from ht_proxy_if import cht_socket_client as ht_proxy_client
 
 __author__  = "junky-zs"
 __status__  = "draft"
-__version__ = "0.4.1"
-__date__    = "2023-11-20"
+__version__ = "0.5"
+__date__    = "2026-03-17"
 
 """
 #################################################################
@@ -93,7 +97,7 @@ __date__    = "2023-11-20"
 #    If the ASYNC - port is configured, only receiving of       #
 #    heater - RAW data is possible.                             #
 #    For sending heater-commands the ht_proxy-server is         #
-ä    required.                                                  #
+#    required.                                                  #
 #                                                               #
 # class: ccollgate_cfg()                                        #
 #  This class is used for reading the collgate-configurationfile#
@@ -121,277 +125,460 @@ class cht_if_tx_data(threading.Thread):
     """class 'cht_if_tx_data' is waiting for data from queue and parsing this.
         Valid heater-commands are send to the connected port.
     """
+    # constants used in __send_data_2_ht_bus()
+    TDESIRED_CMD           = 1
+    TNIVEAU_CMD            = 2
+    DHW_TNORMAL_CMD        = 3
+    DHW_CHARGE_ONCE_CMD    = 4
+    DHW_DISINFECT_MODE_CMD = 5
+    DHW_SETPOINT_MAX_CMD   = 6
+    DHW_SETPOINT_MIN_CMD   = 7
+    DHW_MODE_CMD           = 8
 
-    def __init__(self, tx_queue, port, allowed_cmds, bustype_detector_fkt, logging=None, loglevel_in=logging.INFO):
+    # valid set-commands (lower case) from xml-configuration-file
+    tx_cmds = {
+      'tdesired'          : TDESIRED_CMD,
+      'tniveau'           : TNIVEAU_CMD,
+      'dhwtsetpointnormal': DHW_TNORMAL_CMD,
+      'dhwchargeonce'     : DHW_CHARGE_ONCE_CMD,
+      'dhwdisinfectmode'  : DHW_DISINFECT_MODE_CMD,
+      'dhwtsetpointmax'   : DHW_SETPOINT_MAX_CMD,
+      'dhwtsetpointmin'   : DHW_SETPOINT_MIN_CMD,
+      'dhwmode'           : DHW_MODE_CMD,
+      TDESIRED_CMD           : 'tdesired',
+      TNIVEAU_CMD            : 'tniveau',
+      DHW_TNORMAL_CMD        : 'dhwtsetpointnormal',
+      DHW_CHARGE_ONCE_CMD    : 'dhwchargeonce',
+      DHW_DISINFECT_MODE_CMD : 'dhwdisinfectmode',
+      DHW_SETPOINT_MAX_CMD   : 'dhwtsetpointmax',
+      DHW_SETPOINT_MIN_CMD   : 'dhwtsetpointmin',
+      DHW_MODE_CMD           : 'dhwmode'
+    }
+
+    def __init__(self, tx_queue, port, internal_data, logging=None, loglevel_in=logging.INFO):
         threading.Thread.__init__(self)
         self.__tx_queue = tx_queue
-        self.__ht_if_tx_data = None
         self.__port = port
-        self.__ht_if_allowed_cmds = allowed_cmds
+        self.__data = internal_data
         self.__logging = logging
         self.__loglevel = loglevel_in
+
+
+        self.__ht_if_tx_data = None
         self.__thread_run = True
 
         # ht_data setup parameter
         self.__splitted_rx_param = []
-        self.__heater_circuit = 1
-        self.__param_count = 0
+        self.__circuit_no = 1
         self.__tempera_desired = float(21.5)
-        self.__niveau_desired = 'heizen'
-        self.__tempera_niveau = 'heizen'
-        self.__split_allowed_parameters(allowed_cmds)
-        self.__bustype_detector_fkt = bustype_detector_fkt
+        self.__niveau_desired  = 'heizen'
+        self.__tempera_niveau  = 'heizen'
+        self.__dhw_circuit_no  = 1
+        self.__dhw_tempera_normal = int(50)
+        self.__dhw_charge_once = False
+        self.__dhw_disinfect_auto = False
+        self.__dhw_tempera_max = int(50)
+        self.__dhw_tempera_min = int(45)
+        self.__dhw_mode        = "ww"
 
     def __del__(self):
-        """class desctructor """
-        self.__thread_run = False
+      """class desctructor """
+      self.__thread_run = False
 
-    def __split_allowed_parameters(self, command_dir):
-        """split the external allowed parameters to internal used parameter-list.
-            only parameters not None and with length > zero are used.
-        """
-        ht_if_allowed_cmds = {}
-        for accessname in command_dir.keys():
-            parameter = command_dir[accessname]
-            if parameter != None and len(parameter) > 0:
-                set_parameter = parameter.split(',')
-                ht_if_allowed_cmds.update({accessname:set_parameter})
-        self.__ht_if_allowed_cmds = ht_if_allowed_cmds
+    def __send_data_2_ht_bus(self, cmd_no, ems_flag):
+      """send the bytestream to ht_bus using lib-fkts."""
+      error = None
 
-    def __send_data_2_ht_bus(self, command, ems_flag):
-        """send the bytestream to ht_bus using lib-fkts."""
-        error = None
-        command = command.lower()
-
+      ### command: 'Tdesired' ################################################################################
+      if cmd_no == cht_if_tx_data.TDESIRED_CMD:
         if ems_flag == False:
-            ###############################
-            # commands for heatronic-bus
-            ##
-            #  setup new temperatur for niveau (heizen|sparen|frost) and heater-circuit#.
-            if command in 'tdesired':
-                error = self.__ht_if_tx_data.set_tempniveau(self.__tempera_desired,
-                                                            hcircuit_nr=self.__heater_circuit,
-                                                            temperatur_mode=self.__niveau_desired)
-                if error != None:
-                    error = "cht_if_tx_data; " + error
-                    self.__logging.warning(error)
-                else:
-                    debugstr = "cht_if_tx_data;  setup done for Tdesired:{0} and niveau:'{1}'; hc:{2}".format(self.__tempera_desired,
-                                                                                                              self.__niveau_desired,
-                                                                                                              self.__heater_circuit)
-                    self.__logging.debug(debugstr)
-
-            #  setup new temperatur-niveau (auto|heizen|sparen|frost).
-            if command in 'tniveau':
-                error = self.__ht_if_tx_data.set_betriebsart(self.__tempera_niveau,
-                                                             hcircuit_nr=self.__heater_circuit)
-                if error != None:
-                    error = "cht_if_tx_data;error; cmd:{0}; ".format(command) + error
-                    self.__logging.warning(error)
-                else:
-                    debugstr = "cht_if_tx_data;  setup done for Tniveau:{0}".format(self.__tempera_niveau)
-                    self.__logging.debug(debugstr)
-
-            if error == None:
-                self.__logging.debug("cht_if_tx_data; send data to BUS_TYPE_HT3")
-            ##
-            # end commands for heatronic-bus
-            ###############################
+          ################# commands for heatronic-bus  #################
+          #  setup new temperatur for niveau (heizen|sparen|frost) and heater-circuit#.
+          error = self.__ht_if_tx_data.set_tempniveau(self.__tempera_desired,
+                                                      hcircuit_nr=self.__circuit_no,
+                                                      temperatur_mode=self.__niveau_desired)
         else:
-            ###############################
-            # commands for EMS-bus
-            ##
-            #  setup new temperatur for niveau (temporary|comfort1|comfort2|comfort3|eco) and heater-circuit#.
-            if command in 'tdesired':
-                # first setup to manual- mode if required else auto- mode
-                if self.__niveau_desired in ht_const.EMS_TEMP_MODE_MANUAL:
-                    error = cfg.set_operation_mode(ht_const.EMS_OMODE_MANUAL,
-                                                   hcircuit_nr=self.__heater_circuit)
-                else:
-                    error = self.__ht_if_tx_data.set_operation_mode(ht_const.EMS_OMODE_AUTO,
-                                                                    hcircuit_nr=self.__heater_circuit)
-                if error != None:
-                    error = "cht_if_tx_data; error; cmd:{0}; ".format(command) + error
-                    self.__logging.warning(error)
+          ################# commands for EMS-bus ########################
+          #  setup new temperatur for niveau (temporary|comfort1|comfort2|comfort3|eco) and heater-circuit#.
+          # first setup to manual- mode if required else auto- mode
+          if self.__niveau_desired in ht_const.EMS_TEMP_MODE_MANUAL:
+            error = self.__ht_if_tx_data.set_operation_mode(ht_const.EMS_OMODE_MANUAL,
+                                                            hcircuit_nr=self.__circuit_no)
+          else:
+            error = self.__ht_if_tx_data.set_operation_mode(ht_const.EMS_OMODE_AUTO,
+                                                            hcircuit_nr=self.__circuit_no)
+          if error != None:
+            error = "cht_if_tx_data; error; cmd:{}; ".format(cht_if_tx_data.tx_cmds[cmd_no]) + error
+            self.__logging.warning(error)
 
-                # second setup temperatur for that command niveau
-                if self.__niveau_desired in ht_const.EMS_TEMP_MODE_ECO:
-                    error = self.__ht_if_tx_data.set_ecomode(self.__tempera_desired,
-                                                                hcircuit_nr=self.__heater_circuit)
-                else:
-                    error = self.__ht_if_tx_data.set_tempniveau(self.__tempera_desired,
-                                                                hcircuit_nr=self.__heater_circuit,
-                                                                temperatur_mode=self.__niveau_desired)
-                if error != None:
-                    error = "cht_if_tx_data; error; cmd:{0}; ".format(command) + error
-                    self.__logging.warning(error)
+          # second setup temperatur for that command niveau
+          if self.__niveau_desired in ht_const.EMS_TEMP_MODE_ECO:
+            error = self.__ht_if_tx_data.set_ecomode(self.__tempera_desired,
+                                                        hcircuit_nr=self.__circuit_no)
+          else:
+            error = self.__ht_if_tx_data.set_tempniveau(self.__tempera_desired,
+                                                        hcircuit_nr=self.__circuit_no,
+                                                        temperatur_mode=self.__niveau_desired)
+        if error != None:
+          error = "cht_if_tx_data;Error;{}".format(error)
+          self.__logging.warning(error)
+        else:
+          debugstr = "cht_if_tx_data;  setup done for Tdesired:{} and niveau:'{}'; hc:{}".format( self.__tempera_desired,
+                                                                                                  self.__niveau_desired,
+                                                                                                  self.__circuit_no)
+          self.__logging.debug(debugstr)
 
-            #  setup new temperatur-niveau (auto|manual).
-            if command in 'tniveau':
-                error = self.__ht_if_tx_data.set_operation_mode(ems_omode=self.__tempera_niveau,
-                                                                hcircuit_nr=self.__heater_circuit)
-                if error != None:
-                    error = "cht_if_tx_data; " + error
-                    self.__logging.warning(error)
+      ### command: 'Tniveau' #################################################################################
+      if cmd_no == cht_if_tx_data.TNIVEAU_CMD:
+        if ems_flag == False:
+          #  setup new temperatur-niveau (auto|heizen|sparen|frost).
+          error = self.__ht_if_tx_data.set_betriebsart(self.__tempera_niveau,
+                                                       hcircuit_nr=self.__circuit_no)
+        else:
+          #  setup new temperatur-niveau (auto|manual).
+          error = self.__ht_if_tx_data.set_operation_mode(ems_omode=self.__tempera_niveau,
+                                                          hcircuit_nr=self.__circuit_no)
+        if error != None:
+          error = "cht_if_tx_data;Error;{}".format(error)
+          self.__logging.warning(error)
+        else:
+          debugstr = "cht_if_tx_data;  setup done for Tniveau:{}".format(self.__tempera_niveau)
+          self.__logging.debug(debugstr)
 
-            if error == None:
-                self.__logging.debug("cht_if_tx_data; send data to BUS_TYPE_EMS")
-            ##
-            # end commands for EMS-bus
-            ###############################
+      ### command: 'dhwtsetpointnormal' ######################################################################
+      if cmd_no == cht_if_tx_data.DHW_TNORMAL_CMD:
+        error = self.__ht_if_tx_data.set_DHW_temp(self.__dhw_tempera_normal)
+        if error == None:
+          debugstr = "cht_if_tx_data;  setup done for dhwtsetpointnormal:{}".format(self.__dhw_tempera_normal)
+          self.__logging.debug(debugstr)
+
+      ### command: 'dhwcharge_once' ##########################################################################
+      if cmd_no == cht_if_tx_data.DHW_CHARGE_ONCE_CMD:
+        error = self.__ht_if_tx_data.set_DHW_charge(on=self.__dhw_charge_once, dhw_number=self.__dhw_circuit_no)
+        if error == None:
+          debugstr = "cht_if_tx_data;  setup done for dhwcharge_once:{}".format(self.__dhw_charge_once)
+          self.__logging.debug(debugstr)
+
+      ### command: 'dhwdisinfectmode' ########################################################################
+      if cmd_no == cht_if_tx_data.DHW_DISINFECT_MODE_CMD:
+        error = self.__ht_if_tx_data.set_DHW_Disinfect_Automode(on=self.__dhw_disinfect_auto, dhw_number=self.__dhw_circuit_no)
+        if error == None:
+          debugstr = "cht_if_tx_data;  setup done for dhwdisinfect-mode:{}".format(self.__dhw_disinfect_auto)
+          self.__logging.debug(debugstr)
+
+      ### command: 'dhwTsetpoint_max' ########################################################################
+      if cmd_no == cht_if_tx_data.DHW_SETPOINT_MAX_CMD:
+        error = self.__ht_if_tx_data.set_DHW_maxtemp(self.__dhw_tempera_max)
+        if error == None:
+          debugstr = "cht_if_tx_data;  setup done for dhwTsetpoint_max:{}".format(self.__dhw_tempera_max)
+          self.__logging.debug(debugstr)
+
+      ### command: 'dhwtsetpointmin' #########################################################################
+      if cmd_no == cht_if_tx_data.DHW_SETPOINT_MIN_CMD:
+        error = self.__ht_if_tx_data.set_DHW_tempmin(self.__dhw_tempera_min)
+        if error == None:
+          debugstr = "cht_if_tx_data;  setup done for dhwTsetpoint_min:{}".format(self.__dhw_tempera_min)
+          self.__logging.debug(debugstr)
+
+      ### command: 'dhwmode' #################################################################################
+      if cmd_no == cht_if_tx_data.DHW_MODE_CMD:
+        error = self.__ht_if_tx_data.set_DHW_mode(self.__dhw_mode)
+        if error == None:
+          debugstr = "cht_if_tx_data;  setup done for dhw-mode:{}".format(self.__dhw_mode)
+          self.__logging.debug(debugstr)
+
+      if error != None:
+        error = "cht_if_tx_data;Error;{}".format(error)
+        self.__logging.warning(error)
+    ## end __send_data_2_ht_bus() ##
+
+    def __cmd_parser(self, access_name, set_cmd_str):
+      """
+      """
+      cmd_ok = False
+      debugstr = "cht_if_tx_data.__cmd_parser(); access_name:{}; set_command:{}".format(access_name, set_cmd_str)
+      self.__logging.debug(debugstr)
+      ## test ##
+      # print(debugstr)
+      if access_name in self.__data.get_allowed_cmds().keys():
+        # extract: 1. parameter := command-name
+        command_name = self.__data.get_allowed_cmds()[access_name][0]
+        if not command_name in cht_if_tx_data.tx_cmds:
+          # unknown command, return without further actions
+          return False
+        # extract: 2. parameter := parameter count (int)
+        indexed_value = self.__data.get_allowed_cmds()[access_name][1]
+        self.__param_count = indexed_value
+        if type(indexed_value) == str:
+            self.__param_count = ord(indexed_value) - ord('0')
+        if self.__param_count >= 2:
+          # extract: 3. parameter := heater circuit-number
+          indexed_value = self.__data.get_allowed_cmds()[access_name][2]
+          self.__circuit_no = int(indexed_value)
+          if self.__circuit_no > 0 and self.__circuit_no < 5:
+            cmd_ok = True
+          else:
+            self.__circuit_no = 1
+            cmd_ok = False
+        else:
+          # to less parameters
+          return False
+
+        # extract: 4-n. parameter := special values depending on current command
+        # extract parameter for tdesired
+        if command_name in 'tdesired' and self.__param_count == 3:
+          indexed_value = self.__data.get_allowed_cmds()[access_name][3]
+          if indexed_value == 't':
+            splitted_rx_param = set_cmd_str.split(",")
+            if len(splitted_rx_param) >= 2:
+              # get temperatur-value from rx-message
+              self.__tempera_desired = float(splitted_rx_param[0])
+              # get niveau-value from rx-message
+              tempera_niveau = splitted_rx_param[1].lower()
+              # compare with allowed values from configuration-file
+              allowed_niveaus = self.__data.get_allowed_cmds()[access_name][4].split("||")
+              Fxyz_niveaus = allowed_niveaus[0].split("|")
+              Cxyz_niveaus = allowed_niveaus[1].split("|")
+              if tempera_niveau in Fxyz_niveaus or tempera_niveau in Cxyz_niveaus:
+                  self.__niveau_desired = tempera_niveau
+                  cmd_ok = True
+              else:
+                # error no valid parameter received
+                cmd_ok = False
+                errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; wrong parameter:{}".format(command_name, splitted_rx_param[1])
+                self.__logging.warning(errorstr)
+            else:
+              # to less parameters
+              cmd_ok = False
+              errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; to less parameters:{}".format(command_name, len(splitted_rx_param))
+              self.__logging.warning(errorstr)
+          else:
+            # temperature TAG 't' not found
+            cmd_ok = False
+            errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; Configuration-Tag: 'T' not found".format(command_name)
+            self.__logging.warning(errorstr)
+
+          debugstr = "cmd:{}; set_cmd:{}; temp:{}; niveau:{}; circuit:{}; OK?:{}".format( command_name,
+                                                                                          set_cmd_str,
+                                                                                          self.__tempera_desired,
+                                                                                          self.__niveau_desired,
+                                                                                          self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'tdesired'
+
+        # extract parameter for tniveau
+        if command_name in 'tniveau' and  self.__param_count == 2:
+          allowed_niveaus = self.__data.get_allowed_cmds()[access_name][3].split("||")
+          Fxyz_niveaus = allowed_niveaus[0].split("|")
+          Cxyz_niveaus = allowed_niveaus[1].split("|")
+          if len(set_cmd_str) > 0:
+            if set_cmd_str in Fxyz_niveaus or set_cmd_str in Cxyz_niveaus:
+              self.__tempera_niveau = set_cmd_str
+              cmd_ok = True
+            else:
+              # error no valid parameter received
+              cmd_ok = False
+              errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; unknown parameter:{}".format(command_name, set_cmd_str)
+              self.__logging.warning(errorstr)
+          else:
+              # error no valid parameter received
+              cmd_ok = False
+              errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; to less parameters:{}".format(command_name, len(set_cmd_str))
+              self.__logging.warning(errorstr)
+          debugstr = "cmd:{}; set_cmd:{}; last-tniveau:{}; circuit:{}; OK?:{}".format(command_name,
+                                                                                      set_cmd_str,
+                                                                                      self.__tempera_niveau,
+                                                                                      self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'tniveau'
+
+        # extract parameter for dhwtsetpointnormal
+        if command_name in 'dhwtsetpointnormal' and  self.__param_count == 2:
+          indexed_value = self.__data.get_allowed_cmds()[access_name][3]
+          if indexed_value == 't':
+            # get temperatur-value from rx-message
+            self.__dhw_tempera_normal = int(set_cmd_str, 10)
+            cmd_ok = True
+          else:
+            # error no valid parameter received
+            cmd_ok = False
+            errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; set_cmd:{}; parameter:T not available".format(command_name, set_cmd_str)
+            self.__logging.warning(errorstr)
+          debugstr = "cmd:{}; set_cmd:{}; last-dhwtsetpointnormal:{}; circuit:{}; OK?:{}".format(command_name,
+                                                                                          set_cmd_str,
+                                                                                          self.__dhw_tempera_normal,
+                                                                                          self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'dhwtsetpointnormal'
+
+        # extract parameter for dhwchargeonce
+        if command_name in 'dhwchargeonce' and  self.__param_count == 2:
+          allowed_parameter = self.__data.get_allowed_cmds()[access_name][3].split("|")
+          if len(set_cmd_str) > 0:
+            if set_cmd_str.lower() in allowed_parameter:
+              if set_cmd_str.lower() == "on":
+                self.__dhw_charge_once = True
+              else:
+                self.__dhw_charge_once = False
+              cmd_ok = True
+            else:
+              # error no valid parameter received
+              cmd_ok = False
+              errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; wrong parameter:".format(command_name, set_cmd_str)
+              self.__logging.warning(errorstr)
+          debugstr = "cmd:{}; set_cmd:{}; last-dhwchargeonce:{}; circuit:{}; OK?:{}".format(command_name,
+                                                                                            set_cmd_str,
+                                                                                            self.__dhw_charge_once,
+                                                                                            self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'dhwchargeonce'
+
+        # extract parameter for dhwdisinfection mode
+        if command_name in 'dhwdisinfectmode' and  self.__param_count == 2:
+          allowed_parameter = self.__data.get_allowed_cmds()[access_name][3].split("|")
+          if len(set_cmd_str) > 0:
+            if set_cmd_str.lower() in allowed_parameter:
+              if set_cmd_str.lower() == "auto":
+                self.__dhw_disinfect_auto = True
+              else:
+                self.__dhw_disinfect_auto = False
+              cmd_ok = True
+            else:
+              # error no valid parameter received
+              cmd_ok = False
+              errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; wrong parameter:".format(command_name, set_cmd_str)
+              self.__logging.warning(errorstr)
+          debugstr = "cmd:{}; set_cmd:{}; last-dhwdisinfection-mode:{}; circuit:{}; OK?:{}".format( command_name,
+                                                                                                    set_cmd_str,
+                                                                                                    self.__dhw_disinfect_auto,
+                                                                                                    self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'dhwdisinfection'
+
+        # extract parameter for dhwtsetpointmax
+        if command_name in 'dhwtsetpointmax' and  self.__param_count == 2:
+          indexed_value = self.__data.get_allowed_cmds()[access_name][3]
+          if indexed_value == 't':
+            # get temperatur-value from rx-message
+            self.__dhw_tempera_max = int(set_cmd_str, 10)
+            cmd_ok = True
+          else:
+            # error no valid parameter received
+            cmd_ok = False
+            self.__dhw_tempera_max = 50
+            errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; set_cmd:{}; parameter:T not available".format(command_name, set_cmd_str)
+            self.__logging.warning(errorstr)
+          debugstr = "cmd:{}; set_cmd:{}; last-dhwtsetpointmax:{}; circuit:{}; OK?:{}".format(command_name,
+                                                                                              set_cmd_str,
+                                                                                              self.__dhw_tempera_max,
+                                                                                              self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'dhwtsetpointmax'
+
+        # extract parameter for dhwtsetpointmin
+        if command_name in 'dhwtsetpointmin' and  self.__param_count == 2:
+          indexed_value = self.__data.get_allowed_cmds()[access_name][3]
+          if indexed_value == 't':
+            # get temperatur-value from rx-message
+            self.__dhw_tempera_min = int(set_cmd_str, 10)
+            cmd_ok = True
+          else:
+            # error no valid parameter received
+            cmd_ok = False
+            errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; set_cmd:{}; parameter:T not available".format(command_name, set_cmd_str)
+            self.__logging.warning(errorstr)
+          debugstr = "cmd:{}; set_cmd:{}; last-dhwtsetpointmin:{}; circuit:{}; OK?:{}".format( command_name,
+                                                                                          set_cmd_str,
+                                                                                          self.__dhw_tempera_min,
+                                                                                          self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'dhwtsetpointmin'
+
+        if command_name in 'dhwmode' and  self.__param_count == 2:
+          allowed_parameter = self.__data.get_allowed_cmds()[access_name][3].split("|")
+          if len(set_cmd_str) > 0:
+            if set_cmd_str.lower() in allowed_parameter:
+              self.__dhw_mode = set_cmd_str.lower()
+              cmd_ok = True
+            else:
+              # error no valid parameter received
+              cmd_ok = False
+              errorstr = "cht_if_tx_data.__cmd_parser();Error; cmd:{}; wrong parameter:".format(command_name, set_cmd_str)
+              self.__logging.warning(errorstr)
+          debugstr = "cmd:{}; set_cmd:{}; last-mode:{}; circuit:{}; OK?:{}".format( command_name,
+                                                                                    set_cmd_str,
+                                                                                    self.__dhw_mode,
+                                                                                    self.__circuit_no, cmd_ok)
+          self.__logging.debug(debugstr)
+          ## test ##
+          # print(debugstr)
+        ########## end of: 'dhwmode'
+
+
+      ## test ##
+      # cmd_ok = False
+
+      return cmd_ok
+
 
     def run(self):
-        """ """
-        import ht_yanetcom
-        ems_bus = False
-        self.__ht_if_tx_data = ht_yanetcom.cyanetcom(self.__port, ems_bus)
+      """ """
+      ems_bus = False
+      self.__ht_if_tx_data = ht_yanetcom.cyanetcom(self.__port, ems_bus)
 
-        while self.__thread_run:
-            # set default values
-            execute_command = True
-            command_name = ""
-            self.__splitted_rx_param = []
-            self.__param_count = 0
+      while self.__thread_run:
+        try:
+          # wait for queue-message
+          (access_name, value) = self.__tx_queue.get()
+        except Exception as e:
+          errorstr = "cht_if_tx_data.run();ht_if.__tx_queue.get(); Error:{}".format(e)
+          self.__logging.critical(errorstr)
+          raise
 
-            try:
-                # wait for queue-message
-                (access_name, value) = self.__tx_queue.get()
-            except Exception as e:
-                errorstr = "cht_if_tx_data.run();ht_if.__tx_queue.get(); Error:{}".format(e)
-                self.__logging.critical(errorstr)
-                raise
+        if (access_name, value) == (None, None):
+          # terminate loop
+          self.stop()
+          break
 
-            if (access_name, value) == (None, None):
-                self.stop()
-                break
+        # set EMS bus if it was dynamicly detected on telegramm-rx
+        #  this setup is important to use the correct commands / Telegramms
+        #  for the EMS-like controllers.
+        if self.__data.HeaterBusType() == ht_const.BUS_TYPE_EMS:
+          ems_bus = True
+          self.__ht_if_tx_data.set_ems_controller()
 
-            # got message, split up content
-            if value != None:
-                self.__splitted_rx_param = value.split(',')
-            else:
-                self.__splitted_rx_param = ""
-            debugstr = "cht_if_tx_data; access_name:{0}; value:{1}".format(access_name, self.__splitted_rx_param)
-            self.__logging.debug(debugstr)
+        if self.__cmd_parser(access_name, value) :
+          ## send data at least to the heater-bus
+          # get current command from configuration attached to the access_name
+          command = self.__data.get_allowed_cmds()[access_name][0]
+          # send data to ht-bus using parsed data with '__cmd_parser()'
+          self.__send_data_2_ht_bus(cht_if_tx_data.tx_cmds[command], ems_bus)
+        else:
+          errorstr = "cht_if_tx_data.__cmd_parser(); Error; unknown parameter:{} for access_name:{}".format(value, access_name)
+          self.__logging.warning(errorstr)
 
-            # extract detailed parameters from configuration-context.
-            if access_name in self.__ht_if_allowed_cmds.keys():
-                allowed_parameter = self.__ht_if_allowed_cmds[access_name]
+        # queue-task done, end of processing
+        self.__tx_queue.task_done()
 
-                # only parameter not None and length > 0 are processed
-                if allowed_parameter != None and len(self.__splitted_rx_param) > 0:
-                    # extract: 1. parameter := command-name
-                    command_name = self.__ht_if_allowed_cmds[access_name][0]
-
-                    # extract: 2. parameter := parameter count (int)
-                    indexed_value = self.__ht_if_allowed_cmds[access_name][1]
-                    self.__param_count = indexed_value
-                    if type(indexed_value) == str:
-                        self.__param_count = ord(indexed_value) - ord('0')
-
-                    if self.__param_count > 1:
-                        # extract: 3. parameter := heater circuit-number
-                        indexed_value = self.__ht_if_allowed_cmds[access_name][2]
-                        self.__heater_circuit = int(indexed_value)
-                        if self.__heater_circuit > 0 and self.__heater_circuit < 5:
-                            execute_command = True
-                        else:
-                            self.__heater_circuit = 1
-                            execute_command = False
-
-                        # extract: 4-n. parameter := special values depending on current command
-                        # extract parameter for tdesired
-                        if command_name.lower() in 'tdesired':
-                            if self.__param_count == 3:
-                                indexed_value = self.__ht_if_allowed_cmds[access_name][3]
-                                if indexed_value == 'T':
-                                    if len(self.__splitted_rx_param) > 1:
-                                        # get temperatur-value from rx-message
-                                        self.__tempera_desired = float(self.__splitted_rx_param[0])
-                                        # get niveau-value from rx-message
-                                        tempera_niveau = self.__splitted_rx_param[1].lower()
-                                        allowed_niveaus = self.__ht_if_allowed_cmds[access_name][4]
-                                        if tempera_niveau in allowed_niveaus:
-                                            self.__niveau_desired = tempera_niveau
-                                            execute_command = True
-                                        else:
-                                            # error no valid parameter received
-                                            execute_command = False
-                                            errorstr = "cht_if_tx_data;error; cmd:{0}; parameter:{1} wrong".format(command_name, tempera_niveau)
-                                            self.__logging.warning(errorstr)
-                                    else:
-                                        # error no valid parameter received
-                                        execute_command = False
-                                        errorstr = "cht_if_tx_data;error; cmd:{0}; parameter:{1} wrong".format(command_name, self.__splitted_rx_param)
-                                        self.__logging.warning(errorstr)
-                            else:
-                                # error no valid parameter
-                                execute_command = False
-                                errorstr = "cht_if_tx_data;error; cmd:{0}; amount of parameter:{1} wrong".format(command_name, self.__param_count)
-                                self.__logging.warning(errorstr)
-                        ########## end of: 'tdesired'
-
-                        # extract parameter for tniveau
-                        if command_name.lower() in 'tniveau':
-                            if self.__param_count == 2:
-                                indexed_value = self.__ht_if_allowed_cmds[access_name][3]
-                                if len(self.__splitted_rx_param) > 0:
-                                    if self.__splitted_rx_param[0].lower() in indexed_value:
-                                        self.__tempera_niveau = self.__splitted_rx_param[0].lower()
-                                        execute_command = True
-                                    else:
-                                        # error no valid parameter received
-                                        execute_command = False
-                                        errorstr = "cht_if_tx_data;error; cmd:{0}; unknown parameter:{1}".format(command_name, self.__splitted_rx_param[0])
-                                        self.__logging.warning(errorstr)
-                                else:
-                                    # error no valid parameter received
-                                    execute_command = False
-                                    errorstr = "cht_if_tx_data;error; cmd:{0}; parameter:{1} wrong".format(command_name, self.__splitted_rx_param)
-                                    self.__logging.warning(errorstr)
-                            else:
-                                # error no valid parameter
-                                execute_command = False
-                                errorstr = "cht_if_tx_data;error; cmd:{0}; amount of parameter:{1} wrong".format(command_name, self.__param_count)
-                                self.__logging.warning(errorstr)
-                        ########## end of: 'tniveau'
-                    else:
-                        errorstr = "cht_if_tx_data;error; cmd:{0}; amount of parameter:{1} wrong".format(command_name, self.__param_count)
-                        self.__logging.warning(errorstr)
-                        # error no valid parameter
-                        execute_command = False
-                else:
-                    errorstr = "cht_if_tx_data; error; unknown command:{0} or wrong parameter received.".format(access_name)
-                    self.__logging.warning(errorstr)
-                    # error no valid parameter
-                    execute_command = False
-
-                # execute command if allowed
-                if execute_command == True:
-                    debugstr = """cht_if_tx_data; command:{0}; param_count:{1}; P1 heater-circuit:{2}; P2-Pn:{3}""".format(command_name,
-                                                                                                              self.__param_count,
-                                                                                                              self.__heater_circuit,
-                                                                                                              self.__splitted_rx_param)
-                    self.__logging.debug(debugstr)
-
-                    # set EMS bus if it was dynamicly detected on telegramm-rx
-                    #  this setup is importent to use the correct commands / Telegramms
-                    #  for the EMS-like controllers.
-                    if self.__bustype_detector_fkt() == ht_const.BUS_TYPE_EMS:
-                        ems_bus = True
-                        self.__ht_if_tx_data.set_ems_controller()
-                    else:
-                        ems_bus = False
-                    # send data to ht-bus
-                    self.__send_data_2_ht_bus(command_name.lower(), ems_bus)
-                # task done, end of processing
-                self.__tx_queue.task_done()
-            else:
-                errorstr = "cht_if_tx_data; unknown command:{0}".format(access_name)
-                self.__logging.warning(errorstr)
 
     def stop(self):
-        """ """
-        self.__thread_run = False
+      """ """
+      self.__thread_run = False
+
 #--- class cht_if_tx_data end ---#
 ################################################
 
@@ -404,7 +591,7 @@ class cht_if_worker(threading.Thread):
                  putdata_flag=True,
                  logging=None,
                  loglevel_in=logging.INFO):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         # setup data-struct
         self._data = data.cdata()
         # set defaults
@@ -429,10 +616,10 @@ class cht_if_worker(threading.Thread):
                 abs_logfilepath = os.path.abspath(logfilepath)
                 loggertag="ht_if_worker"
                 self._logging = self._data.create_logfile(abs_logfilepath, self._loglevel, loggertag)
-            except(EnvironmentError, TypeError) as e:
+            except(FileNotFoundError, EnvironmentError, TypeError) as e:
                 errorstr = "cht_if_worker();Error; could not create logfile:{};{}".format(abs_logfilepath, e.args[0])
                 print(errorstr)
-                raise e
+                raise FileNotFoundError(errorstr)
 
         # read configurationfile
         try:
@@ -441,7 +628,7 @@ class cht_if_worker(threading.Thread):
             errorstr='cht_if_worker();Error;could not get configuration-values'
             self._logging.critical(errorstr)
             print(errorstr)
-            raise
+            raise FileNotFoundError(errorstr)
 
         #using parameters from cfg-file
         self.__serialdevice = str(self._data.AsyncSerialdevice())
@@ -450,7 +637,11 @@ class cht_if_worker(threading.Thread):
         #setup current loglevel read from cfg-file
         self._logging.setLevel(self._loglevel)
         # setup interface
-        self.__setup()
+        try:
+          self.__setup()
+        except (EnvironmentError, Exception) as e:
+          raise Exception(e)
+
         self.__startup_time = time.time()
         self.__allowed_cmds = {}
 
@@ -470,12 +661,10 @@ class cht_if_worker(threading.Thread):
                 client_cfg_file =os.path.normcase(os.path.abspath(self._data.client_cfg_file()))
                 if not os.path.exists(client_cfg_file):
                     errorstr="cht_if_worker();Error;couldn't find file:{}".format(client_cfg_file)
-                    self._logging.critical(errorstr)
                     raise EnvironmentError(errorstr)
             except Exception as e:
-                errorstr="cht_if_worker();couldn't find file:{}; Error:{}".format(client_cfg_file, e)
-                self._logging.critical(errorstr)
-                raise EnvironmentError(errorstr)
+                self._logging.critical(e)
+                raise EnvironmentError(e)
 
             try:
                 self.__port = ht_proxy_client(client_cfg_file, loglevel=self._loglevel)
@@ -493,13 +682,6 @@ class cht_if_worker(threading.Thread):
                 errorstr="cht_if_worker();couldn't open requested device:{}; Error:{}".format(self.__serialdevice, e)
                 self._logging.critical(errorstr)
                 raise EnvironmentError(errorstr)
-
-    def __init_allowed_cmds(self):
-        """ """
-        for accessname in self.ht_if_data().get_access_names().keys():
-            # get tuple from dir and use the accessname - context
-            (Nickname, logitem, itemname, set_param) = self.ht_if_data().get_access_names()[accessname]
-            self.__allowed_cmds.update({accessname:set_param})
 
     def WaitTimeElapsed(self):
         """Waiting more then 2 minutes for valid heater-data."""
@@ -533,7 +715,7 @@ class cht_if_worker(threading.Thread):
     def run(self):
         """
         """
-        self.__init_allowed_cmds()
+        self.__allowed_cmds = self._data.get_allowed_cmds()
 
         self._logging.info("cht_if_worker(); Start ----------------------")
         self._logging.info("cht_if_worker();  Loglevel      :{0}".format(logging.getLevelName(self._loglevel)))
@@ -553,8 +735,7 @@ class cht_if_worker(threading.Thread):
             #   tx_queue, port, logging, loglevel and access-/set_parameter- names
             self.__ht_if_tx_data = cht_if_tx_data(self.__data_2_send_queue,
                                                   self.__port,
-                                                  self.__allowed_cmds,
-                                                  self._data.HeaterBusType, # data.HeaterBusType() method is called
+                                                  self._data,
                                                   self._logging,
                                                   self._loglevel)
             # start tx_data thread
@@ -574,7 +755,8 @@ class cht_if_worker(threading.Thread):
             errorstr="cht_if_worker();couldn't start 'ht_discode' thread; Error:{}".format(e)
             self._logging.critical(errorstr)
             self.__thread_run = False
-            self.__port.close()
+            if self.__port != None:
+              self.__port.close()
             raise
 
         try:
@@ -711,7 +893,7 @@ class cstore2db(threading.Thread):
         automatic erase of old data is done in sqlite-db if it is enabled.
     """
     def __init__(self, cfg_file, ht_if, logging):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self._ht_if = ht_if
         self._cfg_file = cfg_file
         self._logging = logging
@@ -746,7 +928,7 @@ class cstore2db(threading.Thread):
                     h_database.vacuum()
                     debugstr = "sqlite-db autoerasing finished; time:{0}".format(int(time.time()))
                     self._logging.info(debugstr)
-                except (sqlite3.OperationalError, ValueError) as e:
+                except Exception as e:
                     errorstr = "cstore2db.__Autoerasing_sqlitedb(); Error:{}".format(e)
                     self._logging.critical(errorstr)
 
@@ -769,7 +951,7 @@ class cstore2db(threading.Thread):
                     # get first UTC-timestamp
                     rtnvalue = int(valuetmp[0:1][0])
                     break
-        except (sqlite3.OperationalError, ValueError) as e:
+        except Exception as e:
             errorstr = "cstore2db.__GetOldestEntry(); Error:{}".format(e)
             self._logging.critical(errorstr)
             rtnvalue = None
@@ -777,10 +959,8 @@ class cstore2db(threading.Thread):
 
     def run(self):
         """worker thread for sqlite-db using 'threading.Thread'"""
-        import sqlite3
         import db_sqlite
         import db_rrdtool
-        debug = 0
         rrdtooldb = None
         nextTimeStep = time.time()
         nextTimeautocreate = time.time()
@@ -844,7 +1024,7 @@ class cstore2db(threading.Thread):
                         # create draw calling script
                         (db_path, dbfilename) = self._ht_if.ht_if_data().db_rrdtool_filepathname()
                         (html_path, filename) = self._ht_if.ht_if_data().db_rrdtool_filepathname('.')
-                        
+
                         second_solar_drawflag = int (self._ht_if.ht_if_data().IsSecondCollectorValue_SO() | \
                                                  self._ht_if.ht_if_data().IsSecondBuffer_SO()
                                                 )
@@ -897,7 +1077,7 @@ class ccollgate(threading.Thread, ccollgate_cfg, ht_utils.clog):
         except:
             errorstr = "ccollgate().__init__();Error;could not create logfile"
             print(errorstr)
-            raise
+            raise FileNotFoundError(errorstr)
 
         self.logger_handle(self._logger)
 
@@ -908,7 +1088,7 @@ class ccollgate(threading.Thread, ccollgate_cfg, ht_utils.clog):
             errorstr = "ccollgate().__init__();could not get configurationfile-infos from file:'{}'; Error:{}".format(self.__configfilename, e)
             self._logger.critical(errorstr)
             print(errorstr)
-            raise
+            raise FileNotFoundError(errorstr)
 
         self.__thread_run = True
         self._ht_if = None
@@ -953,34 +1133,36 @@ class ccollgate(threading.Thread, ccollgate_cfg, ht_utils.clog):
         self._logger.info(infostr)
 
         try:
+            data_flag = self.__Queuedata_required()
+            ht_cfg_filename = self.get_cfg_file(ccollgate_cfg.IF_ht)
             try:
-                data_flag = self.__Queuedata_required()
-                ht_cfg_filename = self.get_cfg_file(ccollgate_cfg.IF_ht)
-                # start ht - interface for receiving and decoding heater bus-data
-                self._ht_if = cht_if_worker(ht_cfg_filename,
-                                  putdata_flag=data_flag,
-                                  logging=self._logger,
-                                  loglevel_in=self.__loglevel_in)
-                self._ht_if.setDaemon(True)
-                self._ht_if.start()
-                accessnames = self._ht_if.get_accessnames()
+              # create ht - interface for receiving and decoding heater bus-data
+              self._ht_if = cht_if_worker(ht_cfg_filename,
+                                putdata_flag=data_flag,
+                                logging=self._logger,
+                                loglevel_in=self.__loglevel_in)
             except Exception as e:
-                errorstr = "ccollgate().run();could not start 'ht-interface'; file:'{}'; Error:{}".format(ht_cfg_filename, e)
-                self._logger.critical(errorstr)
-                self.stop()
-                raise SystemExit
+              errorstr = "ccollgate().run(); {}".format(e)
+              self._logger.critical(errorstr)
+              self.stop()
+              raise SystemExit
+            else:
+              # start ht - interface for receiving and decoding heater bus-data
+              self._ht_if.start()
+              accessnames = self._ht_if.get_accessnames()
 
             try:
                 # start thread storing decoded data to databases sqlite and rrdtool
                 cfg_file = self.get_cfg_file(ccollgate_cfg.IF_ht)
                 self._store2db = cstore2db(cfg_file, self._ht_if, logging=self._logger)
-                self._store2db.setDaemon(True)
-                self._store2db.start()
             except Exception as e:
                 errorstr = "ccollgate().run();could not start 'sqlite/rrdtool-DBinterface''; Error:{}".format(e)
                 self._logger.critical(errorstr)
                 self.stop()
                 raise SystemExit
+            else:
+                self._store2db.start()
+
 
             # start mqtt - interface if enabled
             if self.get_enable_flag(ccollgate_cfg.IF_mqtt):
@@ -990,7 +1172,6 @@ class ccollgate(threading.Thread, ccollgate_cfg, ht_utils.clog):
                     dataqueues = (self._ht_if.decoded_data_queue(), self._ht_if.data_2_send_queue())
                     self._mqtt_pub_client = mqtt_client_if.cmqtt_client(cfg_file, accessnames_in=accessnames)
                     self._mqtt_pub_client.set_dataqueues(dataqueues_rx_tx=dataqueues)
-                    self._mqtt_pub_client.setDaemon(True)
                     self._mqtt_pub_client.start()
                 except Exception as e:
                     errorstr = "ccollgate().run();Error;could not start 'mqtt-interface';file:'{}'; Error:{}".format(cfg_file, e)
@@ -1002,10 +1183,8 @@ class ccollgate(threading.Thread, ccollgate_cfg, ht_utils.clog):
             # start SPS - interface if enabled
             if self.get_enable_flag(ccollgate_cfg.IF_sps):
                 try:
-                    import SPS_if
                     cfg_file = self.get_cfg_file(ccollgate_cfg.IF_sps)
                     self._sps_if = SPS_if.cSPS_if(cfg_file, heater_data_obj=self._ht_if.ht_if_data())
-                    self._sps_if.setDaemon(True)
                     self._sps_if.start()
                 except Exception as e:
                     errorstr = "ccollgate().run();Error;could not start 'sps-interface';file:'{}'; Error:{}".format(cfg_file, e)
@@ -1022,22 +1201,22 @@ class ccollgate(threading.Thread, ccollgate_cfg, ht_utils.clog):
                     if not self._ht_if.is_alive():
                         errorstr = "ccollgate().run();Error;cht_if_worker-thread terminated."
                         self._logger.critical(errorstr)
-                        raise
+                        raise ChildProcessError("cht_if_worker-thread terminated")
                 if self._store2db != None:
                     if not self._store2db.is_alive():
                         errorstr = "ccollgate().run();Error;cstore2db_if-thread terminated."
                         self._logger.critical(errorstr)
-                        raise
+                        raise ChildProcessError("cstore2db_if-thread terminated")
                 if self._mqtt_pub_client != None:
                     if not self._mqtt_pub_client.is_alive():
                         errorstr = "ccollgate().run();Error;mqtt_client_if-thread terminated, see mqtt-logfile for details."
                         self._logger.critical(errorstr)
-                        raise
+                        raise ChildProcessError("mqtt_client_if-thread terminated")
                 if self._sps_if != None:
                     if not self._sps_if.is_alive():
                         errorstr = "ccollgate().run();Error;SPS_if-thread terminated."
                         self._logger.critical(errorstr)
-                        raise
+                        raise ChildProcessError("SPS_if-thread terminated")
         except Exception as e:
             self.stop()
             errorstr = "ccollgate().run() terminated; Error:{}".format(e)
@@ -1065,22 +1244,26 @@ class ccollgate(threading.Thread, ccollgate_cfg, ht_utils.clog):
 
 ### Runs only for test ###########
 if __name__ == "__main__":
+    import sys
+    sys.path.append('./../etc/config')
     collgate_configurationfilename = './../etc/config/4test/collgate_cfg_test.xml'
+    try:
 # only4debug #    collgate = ccollgate(collgate_configurationfilename, loglevel_in=logging.DEBUG)
-    collgate = ccollgate(collgate_configurationfilename)
-    cfg = collgate.get_config()
-    print("---------------+-------------+-------------------")
-    print("Interface-Name | Enable-Flag | Configuration-File")
-    print("---------------+-------------+-------------------")
-    for key in cfg.keys():
-        (flag, file) = cfg[key]
-        print("  {0:12.12} |  {1:10.10} | {2}".format(key, str(flag), file))
-    print("---------------+-------------+-------------------")
+      collgate = ccollgate(collgate_configurationfilename)
+      cfg = collgate.get_config()
+      print("---------------+-------------+-------------------")
+      print("Interface-Name | Enable-Flag | Configuration-File")
+      print("---------------+-------------+-------------------")
+      for key in cfg.keys():
+          (flag, file) = cfg[key]
+          print("  {0:12.12} |  {1:10.10} | {2}".format(key, str(flag), file))
+      print("---------------+-------------+-------------------")
+  ##
+  #   for testpurposes
+  #    print("if:{0};flag:{1};file:{2}".format(ccollgate_cfg.IF_ht,
+  #                                            collgate.get_enable_flag(ccollgate_cfg.IF_ht),
+  #                                            collgate.get_cfg_file(ccollgate_cfg.IF_ht)))
 ##
-#   for testpurposes
-#    print("if:{0};flag:{1};file:{2}".format(ccollgate_cfg.IF_ht,
-#                                            collgate.get_enable_flag(ccollgate_cfg.IF_ht),
-#                                            collgate.get_cfg_file(ccollgate_cfg.IF_ht)))
-##
-
-    collgate.start()
+      collgate.start()
+    except BaseException as e:
+      print("Ccollgate test;Error;{}".format(e))

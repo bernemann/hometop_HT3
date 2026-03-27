@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2013 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2013 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 """ Module 'create_databases.py' creats databases 'sqlite' and 'rrdtool'
 
     All necessary informations are taken from xml-configurationfile.
-    
+
     Database 'sqlite' is created if not yet available.
       If available, it will not be overwritten.
     Database 'rrdtool' is only created if the 'enable'-tag in configurationfile
@@ -60,7 +60,7 @@ if not os.path.exists(abslogpath):
 else:
     #zs#test#   print("Folder already available:{0}".format(abslogpath))
     pass
-    
+
 logfilepathname=os.path.join(abslogpath, os.path.basename(filepathname))
 try:
     logobj=ht_utils.clog()
@@ -115,7 +115,7 @@ if rrdtool.is_rrdtool_db_enabled():
         infostr="rrdtool-databases:'{0}' created and access possible".format(rrdtool.db_rrdtool_filename())
     else:
         infostr="rrdtool-databases:'{0}' not available".format(rrdtool.db_rrdtool_filename())
-else:    
+else:
     infostr="rrdtool-database:'{0}' disabled".format(rrdtool.db_rrdtool_filename())
     logging.info(infostr)
     print(infostr)

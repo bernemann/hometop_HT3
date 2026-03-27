@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2016 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2016 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,8 +21,40 @@
 # Ver:0.2    / Datum 29.08.2016
 # Ver:0.2.2  / Datum 19.10.2016 HT_OFFSET_377_380_TEMPNIVEAU... added
 # Ver:0.3.1  / Datum 28.11.2018 Controller-nr and -str added for Fxyz and Cxyz
+# ver:0.4    / Datum 12.03.2026 common constants added
 #################################################################
 
+import collections
+
+response = collections.namedtuple("response", ["msgtype", "lastError", "msgsize", "msg"])
+request_filter = collections.namedtuple("request_filter", ["polladr", "msgid", "msgoffset"])
+
+# common used constants
+ERR_NONE        = 0
+ERR_COMMON      = -1
+ERR_WRONG_TAG   = -2
+ERR_WRONG_VALUE = -3
+ERR_WRONG_MSG   = -4
+ERR_BUFFER_FULL = -10
+ERR_CRC         = -11
+ERR_CFG_WRITE   = -20
+
+ERR_TIMEOUT         = -30
+ERR_TX_FAILED       = -31
+ERR_NODATA_RECEIVED = 0
+
+MSG_NO_DATA     = 0       # no data available
+MSG_TX_ACK      = 1       # Transmit response
+MSG_RX_DATA     = 2       # receive response
+MSG_CFG_ACK     = 3       # configuration response
+
+MSG_CHAR_EXCLA_MARK = 0x21 # '!'
+MSG_CHAR_QUEST_MARK = 0x3F # '?'
+MSG_CHAR_H      = 0x48
+MSG_CHAR_R      = 0x52
+MSG_CHAR_c      = 0x63
+MSG_CHAR_m      = 0x6D
+MSG_CHAR_s      = 0x73
 
 # Bus-Type definitions mainly used for GUI-support cause on bluddy
 #  hell of telegramms running on different bus-systems
@@ -35,7 +67,32 @@ CONTROLLER_TYPE_STR_Fxyz = "Fxyz"
 CONTROLLER_TYPE_STR_Cxyz = "Cxyz"
 CONTROLLER_TYPE_NR_Fxyz = 1
 CONTROLLER_TYPE_NR_Cxyz = 2
+CONTROLLER_TYPE_UNKNOWN = 3
 
+Junkers_controller = {
+  105 : "FW100",
+  106 : "FW200",
+  107 : "FR100",
+  108 : "FR110",
+  109 : "FB10" ,
+  110 : "FB100",
+  111 : "FR10" ,
+  116 : "FW500",
+  119 : "FR110F",
+  120 : "FR110FEM",
+  147 : "FR50" ,
+  191 : "FR120",
+  192 : "FW120"
+}
+
+BOSCH_EMS_controller = {
+  157 : "CW100",
+  158 : "CW400",
+  165 : "CR10",
+  "CW100" : 157,
+  "CW400" : 158,
+  "CR10"  : 165
+}
 
 #### Heatronic -typed constants ####
 ##### ID357 - ID360 #############################################

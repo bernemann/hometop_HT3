@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2021 Norbert S. <junky-zs at gmx dot de>
+## Copyright (c) 2021 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -154,18 +154,18 @@ class c_hometop2HA_if(mqtt_client):
                     else:
                         # others
                         hassio_payload['unit_of_measurement'] = ''
-                    
+
                 mqtt_topic_str   = "{}/sensor/{}/{}/config".format(HA_base_topic, MySensorName, item_name)
                 mqtt_payload_str = json.dumps(hassio_payload)
                 infostr = "Config->topic  :{}\nhassio_payload:{}".format(mqtt_topic_str, mqtt_payload_str)
                 self.publish_data(mqtt_topic_str, mqtt_payload_str)
                 self.debug(infostr+"\n--------------------------------------------")
-                    
+
 
             # add logitem_name and attached value to global dict()
             g_logitem_value_dict[item_name] = payload
-               
-                
+
+
             #checking for values and send them to hassio/state
             data = dict()
             mqtt_topic_str   = "{}/sensor/{}/state".format(HA_base_topic, MySensorName)

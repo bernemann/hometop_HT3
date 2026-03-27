@@ -3,7 +3,7 @@
 <!--
  ##
  #   #################################################################
- ## Copyright (c) 2017 Norbert S. <junky-zs@gmx.de>
+ ## Copyright (c) 2017 Norbert S. <junky-zsatgmxdotde>
  #
  # This program is free software: you can redistribute it and/or modify
  # it under the terms of the GNU General Public License as published by
@@ -59,7 +59,7 @@
         <LastWillRetain>True</LastWillRetain>   <!-- True / False -->
         <Publish_OnlyNewValues>True</Publish_OnlyNewValues>  <!-- True / False -->
         <client_id>myHeater_MQTT_Client_test</client_id> <!-- unique ID for your purposes -->
-        <device_id></device_id> 
+        <device_id></device_id>
           <!-- optional device_id used for unique topic_name(s)
                 - leave it empty if not required
                 - [hostname] or [localhost] are replaced with real hostname

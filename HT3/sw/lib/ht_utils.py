@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2015 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2015 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -249,7 +249,7 @@ class cht_utils(object):
                 rtnstr += "{:c}".format(byte)
         else:
             rtnstr = "0"
-            
+
         return rtnstr
 
     def Bitstatus(self, byte, bitnr):
@@ -260,7 +260,7 @@ class cht_utils(object):
         rtnvalue = 1 if (byte & bitmask) else 0
         return rtnvalue
 
-        
+
 #--- class cht_utils end ---#
 
 class clog(object):
@@ -517,4 +517,4 @@ if __name__ == "__main__":
     print("value (int):{}, value (str):{}".format(value, utils.IntegerToString(value)))
     value = 0x43353637 # -->> 'C567'
     print("value (int):{}, value (str):{}".format(value, utils.IntegerToString(value)))
-   
+

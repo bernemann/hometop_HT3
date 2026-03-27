@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2013 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2013 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -49,6 +49,9 @@
 #                               setall_values2default() and showall_values() added.
 #                               defaultvalue() updated.
 #                               getall_nicknames(), getfiltered_sorted_items_with_values() added.
+# Ver:0.5    / 2025-03-04       cfg-value: 'minvalue' default set to: -100.0.
+#                               get_allowed_cmds() added.
+# Ver:0.6    / 2026-03-21       controller_type_EMS() added.
 #################################################################
 
 import xml.etree.ElementTree as ET
@@ -213,6 +216,9 @@ class cdata(ht_utils.clog):
         self.__controller_type_nr = ht_const.CONTROLLER_TYPE_NR_Fxyz
         self.__bus_type = "---"
         self.__busmodulAdr = ""
+        self.__ht_transceiver_found = False
+        # allowed set-commands
+        self.__allowed_cmds = {}
 
 
     def setlogger(self, logger):
@@ -458,11 +464,10 @@ class cdata(ht_utils.clog):
                             try:
                                 minvalue = logitem.find('minvalue').text
                             except:
-                                minvalue = None
-
+                                minvalue = "-100.0"
                             # add itemname and values to table
-                            self.update(shortname, logitem=name, value=default, displayname=displayname, unit=unit, 
-                                        hwtype=hardwaretype, maxvalue=maxvalue, default=default, 
+                            self.update(shortname, logitem=name, value=default, displayname=displayname, unit=unit,
+                                        hwtype=hardwaretype, maxvalue=maxvalue, default=default,
                                         accessname=accessname, set_parameter=set_parameter, minvalue=minvalue )
                         else:
                             if not len(logitem):
@@ -828,7 +833,7 @@ class cdata(ht_utils.clog):
                 print("showall_values(); nickname:{};item:{};value:{};default:{}".format(nickname, item, savedvalue, defaultvalue))
 
     def update(self, nickname, logitem, value=0.0, displayname="", unit="", hwtype="",
-               maxvalue=100.0, default=0.0, accessname="", set_parameter="", minvalue=None):
+               maxvalue=100.0, default=0.0, accessname="", set_parameter="", minvalue=0.0):
         """
         updates an already created data.member (logitem) with the new value or
          will create it, if not yet available.
@@ -872,9 +877,8 @@ class cdata(ht_utils.clog):
                         self.__data[nickname][7][itemname] = default
                     if len(accessname) > 0:
                         self.__data[nickname][8][itemname] = accessname
-                    if minvalue != -1000.0:
+                    if minvalue != 0.0:
                         self.__data[nickname][9][itemname] = minvalue
-                        
                 else:
                     # add new item and value, index is the current array-length
                     # and is set to dir{itemname:index}
@@ -914,7 +918,7 @@ class cdata(ht_utils.clog):
                     self.__data[nickname][8].update({itemname: accessname})
 
                     self.__data[nickname][9].update({itemname: minvalue})
-                       
+
 
                 if not hwtype == None and len(hwtype) > 0:
                     self.__data[nickname][10] = hwtype
@@ -1214,12 +1218,23 @@ class cdata(ht_utils.clog):
         return self.__controller_type
 
     def controller_type_nr(self, i_type = -1):
-        """returns/sets the controller-type-number as int.
-        """
+        """returns/sets the controller-type-number as int."""
         if (i_type != -1):
             self.__controller_type_nr = int(i_type)
         return int(self.__controller_type_nr)
 
+    def controller_type_EMS(self):
+      """returns True if controller is EMS-type, else False."""
+      if ((self.controller_type() == ht_const.CONTROLLER_TYPE_STR_Cxyz) or
+          (self.controller_type() in ht_const.BOSCH_EMS_controller )):
+        return True
+      else:
+        return False
+
+    def transceiver_available(self, transceiver=None):
+      if transceiver != None:
+        self.__ht_transceiver_found = transceiver
+      return self.__ht_transceiver_found
 
     def bus_type(self, b_type=""):
         """returns/sets the found bus-type as string."""
@@ -1257,6 +1272,19 @@ class cdata(ht_utils.clog):
 
     def get_access_names(self):
         return self.__accesscontext
+
+    def get_allowed_cmds(self):
+      """ """
+      for accessname in self.__accesscontext.keys():
+        # get tuple from dir and use the accessname - context
+        (Nickname, logitem, itemname, set_param) = self.__accesscontext[accessname]
+        if not set_param == None:
+          # replace unrequired and set to lower chars
+          set_param = set_param.replace("_", "").lower()
+          # make list from string
+          sparam = set_param.split(',')
+          self.__allowed_cmds.update({accessname:sparam})
+      return self.__allowed_cmds
 
     def _SetDataIf_async(self):
         """
@@ -1500,7 +1528,7 @@ class cdata(ht_utils.clog):
             if self.__controller_type_nr == ht_const.CONTROLLER_TYPE_NR_Cxyz:
                 self.__controller_type_nr = ht_const.CONTROLLER_TYPE_NR_Fxyz
                 self.__controller_type    = ht_const.CONTROLLER_TYPE_STR_Fxyz
-            
+
         return self._heater_bustype
 
     def IsSolarAvailable(self, available=None):
@@ -1727,14 +1755,22 @@ if __name__ == "__main__":
         print(" -- show all items_with_values of nickname: 'HK1' ---")
         print("{0}".format(data.getall_sorted_items_with_values("HK1")))
 
-        print(""" -- Get access-context for accessname    ---""")
-        print("""      using access-name: 'ch_Tflow_desired'""")
-        (nickname, logitem, itemname, set_parameter) = data.get_access_context("ch_Tflow_desired")
-        if nickname == 'HG' and len(itemname) > 0:
-            print("      Result OK -> Nickname:{0}; Logitem:{1}; Itemname:{2}; Set-Parameter:{3}".format(nickname, logitem, itemname, set_parameter))
-        else:
-            print("      Failed    -> Nickname:{0}; Logitem:{1}; Itemname:{2}; Set-Parameter:{3}".format(nickname, logitem, itemname, set_parameter))
+        print()
+        print(""" -- Print access-names and parameter    ---""")
+        print("Accessname               | Nickname | logitem             | itemname        | set_param")
+        print(" --------------------------------------------------------------------------------------------")
+        for accessname in data.get_access_names().keys():
+          # get tuple from dir and use the accessname - context
+          (Nickname, logitem, itemname, set_param) = data.get_access_names()[accessname]
+          print("{:25}|{:10}| {:20}| {:16}| {}".format(accessname, Nickname, logitem, itemname, set_param))
 
+        print()
+        print(""" -- Print access-names and set_parameter    ---""")
+        print("Accessname               | set_param")
+        print(" --------------------------------------------------------------------------------------------")
+        for accessname in data.get_allowed_cmds().keys():
+          set_param = data.get_allowed_cmds()[accessname]
+          print("{:25}| {}".format(accessname, set_param))
 
         print(""" -------------------------------------------""")
         print(""" -- Set values to defaults               ---""")

@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2013 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2013 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -82,6 +82,8 @@
 #                          __MakeDisplaycodeString() replaced with utils.IntegerToString()
 # Ver:0.6.2  / 2023-10-22  Mixerposition solar-optionG added using spare-value:sol_V_spare_1
 #                            ID:868_15_0
+# Ver:0.7    / 2026-03-21  System-Anzeige modifiziert
+#                          WW T-Soll Max, WW T-Soll Min, WW-Disinfection and WW-Mode added.
 #################################################################
 #
 
@@ -143,12 +145,12 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
             self.__fr1.pack(side="top")
             if self.__hexdump_window:
                 self.__main.title('Heizungs Analyser Rev:{0} (Input:{1})'.format(ht_release.VERSION, self.__gui_titel_input))
-                self.__main.geometry("1570x800+5+0")
+                self.__main.geometry("1570x865+5+0")
                 self.__fr2 = tkinter.Frame(self.__fr1, relief="sunken", bd=2)
                 self.__fr2.pack(side="left")
             else:
                 self.__main.title('Heizungs Systemstatus Rev:{0} (Input:{1})'.format(ht_release.VERSION, self.__gui_titel_input))
-                self.__main.geometry("690x800+5+0")
+                self.__main.geometry("690x865+5+0")
                 self.__fr2 = None
 
             self.__fr3 = tkinter.Frame(self.__fr1, relief="sunken", bd=3)
@@ -486,35 +488,35 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         leftparameter_t  = ("", "", None)
         rightparameter_t = ("", "", None)
 
-        temptext = "{0:21.39} {1: ^57.20}\n".format("Heizgeraet", "Warmwasser        ")
-        self.__text.insert("end", temptext)
-        self.__text.tag_add("heater", "7.0", "7.39")
+        temptext = "{0:21.57}\n".format("Heizgeraet")
+        self.__text.insert("end", temptext, "b_or")
+        self.__text.tag_add("heater", "7.0", "7.90")
         self.__text.tag_config("heater", background="orange", foreground="black")
-        self.__text.tag_add("water", "7.39", "7.90")
-        self.__text.tag_config("water", background="lightblue", foreground="black")
 
         # 1. line
         tempvalue = format(float(self.__gdata.values(nickname_HG, "Taussen")), ".1f")
         leftparameter_t  = (nickname_HG, "Taussen", tempvalue)
 
-        tempvalue = format(int(self.__gdata.values(nickname_WW, "Tsoll")), "2d")
-        rightparameter_t = (nickname_WW, "Tsoll", tempvalue)
+        betrieb_gesamt_ein = float(self.__gdata.values(nickname_HG, "Cbetrieb_gesamt"))
+        tempvalue = format(betrieb_gesamt_ein, ".1f")
+        rightparameter_t  = (nickname_HG, "Cbetrieb_gesamt", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 2. line
         tempvalue = format(int(self.__gdata.values(nickname_HG, "Tvorlauf_soll")), "2d")
         leftparameter_t  = (nickname_HG, "Tvorlauf_soll", tempvalue)
 
-        tempvalue = format(float(self.__gdata.values(nickname_WW, "Tist")), ".1f")
-        rightparameter_t = (nickname_WW, "Tist", tempvalue)
+        betrieb_heizung_ein = float(self.__gdata.values(nickname_HG, "Cbetrieb_heizung"))
+        tempvalue = format(betrieb_heizung_ein, ".1f")
+        rightparameter_t  = (nickname_HG, "Cbetrieb_heizung", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 3. line
         tempvalue = format(float(self.__gdata.values(nickname_HG, "Tvorlauf_ist")), ".1f")
         leftparameter_t  = (nickname_HG, "Tvorlauf_ist", tempvalue)
 
-        tempvalue = format(float(self.__gdata.values(nickname_WW, "Tspeicher")), ".1f")
-        rightparameter_t = (nickname_WW, "Tspeicher", tempvalue)
+        tempvalue = format(int(self.__gdata.values(nickname_HG, "Cbrenner_gesamt")), "d")
+        rightparameter_t  = (nickname_HG, "Cbrenner_gesamt", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 4. line
@@ -523,9 +525,8 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         if self.IsTemperaturValid(Truecklauf):
             leftparameter_t  = (nickname_HG, "Truecklauf", Truecklauf)
 
-        betriebszeit = float(self.__gdata.values(nickname_WW, "Cbetriebs_zeit"))
-        tempvalue = format(betriebszeit, ".1f")
-        rightparameter_t = (nickname_WW, "Cbetriebs_zeit", tempvalue)
+        tempvalue = format(int(self.__gdata.values(nickname_HG, "Cbrenner_heizung")), "d")
+        rightparameter_t  = (nickname_HG, "Cbrenner_heizung", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 5. line
@@ -534,61 +535,73 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         if self.IsTemperaturValid(Tmischer):
             leftparameter_t  = (nickname_HG, "Tmischer", Tmischer)
 
-        brenner_ww_ein_counter = int(self.__gdata.values(nickname_WW, "Cbrenner_ww"))
-        tempvalue = format(brenner_ww_ein_counter, "d")
-        rightparameter_t = (nickname_WW, "Cbrenner_ww", tempvalue)
+        tempvalue = format(int(self.__gdata.values(nickname_HG, "Vch_pump_power")), "d")
+        rightparameter_t  = (nickname_HG, "Vch_pump_power", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 6. line
         tempvalue = self.__GetStrBetriebsmodus(self.__gdata.values(nickname_HG, "Vmodus"))
         leftparameter_t  = (nickname_HG, "Vmodus", tempvalue)
 
-        tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_WW, "VWW_erzeugung"))
-        rightparameter_t = (nickname_WW, "VWW_erzeugung", tempvalue)
+        # show:display-code if errors
+        displaycode = int(self.__gdata.values(nickname_HG, "Vdisplaycode"))
+        if displaycode > 0:
+            displaycode_str = self.IntegerToString(displaycode)
+        else:
+            displaycode_str = "---"
+        rightparameter_t  = (nickname_HG, "Vdisplaycode", displaycode_str)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 7. line
         tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_HG, "Vbrenner_motor"))
         leftparameter_t  = (nickname_HG, "Vbrenner_motor", tempvalue)
 
-        tempvalue = self.__GetStrJaNein(self.__gdata.values(nickname_WW, "VWW_temp_OK"))
-        rightparameter_t = (nickname_WW, "VWW_temp_OK", tempvalue)
+        # show: cause-code if errors
+        causecode = str(format(self.__gdata.values(nickname_HG, "Vcausecode")))
+        rightparameter_t  = (nickname_HG, "Vcausecode", causecode)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 8. line
         tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_HG, "Vbrenner_flamme"))
         leftparameter_t  = (nickname_HG, "Vbrenner_flamme", tempvalue)
 
-        tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_WW, "VWW_nachladung"))
-        rightparameter_t = (nickname_WW, "VWW_nachladung", tempvalue)
+        # if setup flag for Hydraulic Switch is True, then display T-value
+        temptext = ""
+        rightparameter_t = ("", "", None)
+        if self.__gdata.IsTempSensor_Hydrlic_Switch():
+            Thydraulic_switch = format(float(self.__gdata.values(nickname_HG, "T_hyd_switch")), ".1f")
+            if self.IsTemperaturValid(Thydraulic_switch):
+                rightparameter_t = (nickname_HG, "T_hyd_switch", Thydraulic_switch)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 9. line
-        rightparameter_t = ("", "", None)
         tempvalue = format(int(self.__gdata.values(nickname_HG, "Vleistung")), "d")
         leftparameter_t  = (nickname_HG, "Vleistung", tempvalue)
 
-        #modified 08.09.2020 WW:'T-Soll max' added on GUI
-        tempvalue_int = int(self.__gdata.values(nickname_WW, "T_setpoint_max"))
-        tempvalue = format(tempvalue_int, "2d")
-        if (tempvalue_int > 0):
-            rightparameter_t = (nickname_WW, "T_setpoint_max", tempvalue)
+        rightparameter_t = ("", "", None)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 10. line
-        rightparameter_t = ("", "", None)
         tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_HG, "Vheizungs_pumpe"))
         leftparameter_t  = (nickname_HG, "Vheizungs_pumpe", tempvalue)
+
+        rightparameter_t = ("", "", None)
+        tempvalue = format(float(self.__gdata.values(nickname_HG, "V_pressure")), ".1f")
+        if self.IsSensorAvailable(tempvalue):
+            leftparameter_t = (nickname_HG, "V_pressure", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 11. line
         tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_HG, "Vzirkula_pumpe"))
         leftparameter_t  = (nickname_HG, "Vzirkula_pumpe", tempvalue)
+
+        rightparameter_t = ("", "", None)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 12. line
         tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_HG, "Vspeicher_pumpe"))
         leftparameter_t  = (nickname_HG, "Vspeicher_pumpe", tempvalue)
+        rightparameter_t = ("", "", None)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 13. line
@@ -596,21 +609,20 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         if self.__gdata.IsSolarAvailable():
             temptextsolar = "{0} ({1})".format("Solar", self.__gdata.hardwaretype(nickname_SO))
 
-            temptext = "{0:21.39} {1:^57.20}\n".format("Heizgeraet", temptextsolar)
+            temptext = "{0:21.40} {1:^57.20}\n".format("Warmwasser", temptextsolar)
             self.__text.insert("end", temptext)
-            self.__text.tag_add("heater", "20.0", "20.39")
-            self.__text.tag_config("heater", background="orange", foreground="black")
-            self.__text.tag_add("solar", "20.39", "20.90")
+            self.__text.tag_add("water", "20.0", "20.40")
+            self.__text.tag_config("water", background="lightblue", foreground="black")
+            self.__text.tag_add("solar", "20.40", "20.92")
             self.__text.tag_config("solar", background="lightgreen", foreground="black")
         else:
-            temptext = "{0:21.39} {1:^57.20}\n".format("Heizgeraet", "                  ")
+            temptext = "{0:21.40} {1:^57.20}\n".format("Warmwasser", "                  ")
             self.__text.insert("end", temptext)
-            self.__text.tag_add("heater", "20.0", "20.39")
-            self.__text.tag_config("heater", background="orange", foreground="black")
+            self.__text.tag_add("water", "20.0", "20.40")
+            self.__text.tag_config("water", background="lightblue", foreground="black")
 
-        betrieb_gesamt_ein = float(self.__gdata.values(nickname_HG, "Cbetrieb_gesamt"))
-        tempvalue = format(betrieb_gesamt_ein, ".1f")
-        leftparameter_t  = (nickname_HG, "Cbetrieb_gesamt", tempvalue)
+        tempvalue = format(int(self.__gdata.values(nickname_WW, "Tsoll")), "2d")
+        leftparameter_t = (nickname_WW, "Tsoll", tempvalue)
         rightparameter_t = ("", "", None)
 
         if self.__gdata.IsSolarAvailable():
@@ -619,9 +631,8 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 14. line
-        betrieb_heizung_ein = float(self.__gdata.values(nickname_HG, "Cbetrieb_heizung"))
-        tempvalue = format(betrieb_heizung_ein, ".1f")
-        leftparameter_t  = (nickname_HG, "Cbetrieb_heizung", tempvalue)
+        tempvalue = format(float(self.__gdata.values(nickname_WW, "Tist")), ".1f")
+        leftparameter_t = (nickname_WW, "Tist", tempvalue)
         rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
             tempvalue = format(float(self.__gdata.values(nickname_SO, "Tspeicher_unten")), ".1f")
@@ -629,8 +640,8 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 15. line
-        tempvalue = format(int(self.__gdata.values(nickname_HG, "Cbrenner_gesamt")), "d")
-        leftparameter_t  = (nickname_HG, "Cbrenner_gesamt", tempvalue)
+        tempvalue = format(float(self.__gdata.values(nickname_WW, "Tspeicher")), ".1f")
+        leftparameter_t = (nickname_WW, "Tspeicher", tempvalue)
         rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
             f_laufzeit_stunden = float(self.__gdata.values(nickname_SO, "Claufzeit"))
@@ -639,8 +650,10 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 16. line
-        tempvalue = format(int(self.__gdata.values(nickname_HG, "Cbrenner_heizung")), "d")
-        leftparameter_t  = (nickname_HG, "Cbrenner_heizung", tempvalue)
+        betriebszeit = float(self.__gdata.values(nickname_WW, "Cbetriebs_zeit"))
+        tempvalue = format(betriebszeit, ".1f")
+        leftparameter_t = (nickname_WW, "Cbetriebs_zeit", tempvalue)
+
         rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
             tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_SO, "V_sol_pump"))
@@ -648,8 +661,10 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 17. line
-        tempvalue = format(int(self.__gdata.values(nickname_HG, "Vch_pump_power")), "d")
-        leftparameter_t  = (nickname_HG, "Vch_pump_power", tempvalue)
+        brenner_ww_ein_counter = int(self.__gdata.values(nickname_WW, "Cbrenner_ww"))
+        tempvalue = format(brenner_ww_ein_counter, "d")
+        leftparameter_t = (nickname_WW, "Cbrenner_ww", tempvalue)
+
         rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
             tempvalue = format(int(self.__gdata.values(nickname_SO, "Vsol_pump_power")), "d")
@@ -657,14 +672,9 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 18. line
-        # show:display-code if errors
-        displaycode = int(self.__gdata.values(nickname_HG, "Vdisplaycode"))
-        if displaycode > 0:
-            displaycode_str = self.IntegerToString(displaycode)
-        else:
-            displaycode_str = "---"
+        tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_WW, "VWW_erzeugung"))
+        leftparameter_t = (nickname_WW, "VWW_erzeugung", tempvalue)
 
-        leftparameter_t  = (nickname_HG, "Vdisplaycode", displaycode_str)
         rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
             tempvalue = self.__GetStrJaNein(self.__gdata.values(nickname_SO, "Vkollektor_aus"))
@@ -672,9 +682,9 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 19. line
-        # show: cause-code if errors
-        causecode = str(format(self.__gdata.values(nickname_HG, "Vcausecode")))
-        leftparameter_t  = (nickname_HG, "Vcausecode", causecode)
+        tempvalue = self.__GetStrJaNein(self.__gdata.values(nickname_WW, "VWW_temp_OK"))
+        leftparameter_t = (nickname_WW, "VWW_temp_OK", tempvalue)
+
         rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
             tempvalue = self.__GetStrJaNein(self.__gdata.values(nickname_SO, "Vspeicher_voll"))
@@ -682,74 +692,109 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 20. line
-        # if setup flag for Hydraulic Switch is True, then display T-value
-        temptext = ""
-        leftparameter_t  = ("", "", None)
+        tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_WW, "VWW_nachladung"))
+        leftparameter_t = (nickname_WW, "VWW_nachladung", tempvalue)
+
         rightparameter_t = ("", "", None)
-        if self.__gdata.IsTempSensor_Hydrlic_Switch():
-            Thydraulic_switch = format(float(self.__gdata.values(nickname_HG, "T_hyd_switch")), ".1f")
-            if self.IsTemperaturValid(Thydraulic_switch):
-                leftparameter_t = (nickname_HG, "T_hyd_switch", Thydraulic_switch)
         if self.__gdata.IsSolarAvailable():
             tempvalue = format(int(self.__gdata.values(nickname_SO, "V_ertrag_stunde")), "d")
             rightparameter_t = (nickname_SO, "V_ertrag_stunde", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 21. line
-        leftparameter_t  = ("", "", None)
         rightparameter_t = ("", "", None)
+        tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname_WW, "V_WW_einmalladung"))
+        leftparameter_t = (nickname_WW, "V_WW_einmalladung", tempvalue)
+
         if self.__gdata.IsSolarAvailable():
-            if self.__gdata.controller_type_nr() == ht_const.CONTROLLER_TYPE_NR_Cxyz:
-                tempvalue = format(float(self.__gdata.values(nickname_SO, "V_ertrag_tag_calc")), ".1f")
-                rightparameter_t = (nickname_SO, "V_ertrag_tag_calc", tempvalue)
-                self.__DrawColumn(leftparameter_t, rightparameter_t)
+          if self.__gdata.controller_type_EMS():
+            tempvalue = format(float(self.__gdata.values(nickname_SO, "V_ertrag_tag_calc")), ".1f")
+            rightparameter_t = (nickname_SO, "V_ertrag_tag_calc", tempvalue)
+        self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 22. line
-        leftparameter_t  = ("", "", None)
-        rightparameter_t = ("", "", None)
-        tempvalue = format(float(self.__gdata.values(nickname_HG, "V_pressure")), ".1f")
-        if self.IsSensorAvailable(tempvalue):
-            leftparameter_t = (nickname_HG, "V_pressure", tempvalue)
+        #modified 08.09.2020 WW:'T-Soll max' added on GUI
+        tempvalue_int = int(self.__gdata.values(nickname_WW, "T_setpoint_max"))
+        if (tempvalue_int > 0):
+          tempvalue = format(tempvalue_int, "2d")
+        else:
+          tempvalue = "---"
+        leftparameter_t = (nickname_WW, "T_setpoint_max", tempvalue)
 
+        rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
-            if self.__gdata.controller_type_nr() == ht_const.CONTROLLER_TYPE_NR_Cxyz:
+            if self.__gdata.controller_type_EMS():
                 tempvalue = format(float(self.__gdata.values(nickname_SO, "V_ertrag_sum_calc")), ".1f")
                 rightparameter_t = (nickname_SO, "V_ertrag_sum_calc", tempvalue)
         self.__DrawColumn(leftparameter_t, rightparameter_t)
 
         # 23... line(s)
+        tempvalue_int = int(self.__gdata.values(nickname_WW, "dhw_V_spare_4"))
+        if (tempvalue_int > 0):
+          tempvalue = format(tempvalue_int, "2d")
+        else:
+          tempvalue = "---"
+        leftparameter_t = (nickname_WW, "dhw_V_spare_4", tempvalue)
+
+        rightparameter_t = ("", "", None)
+        if self.__gdata.IsSolarAvailable():
+          rightparameter_t = ("", "", None)
+          tempvalue = format(int(self.__gdata.values(nickname_SO, "V_ch_optimize")), "d")
+          rightparameter_t = (nickname_SO, "V_ch_optimize", tempvalue)
+        self.__DrawColumn(leftparameter_t, rightparameter_t)
+
+        # 24... line(s)
+        tempvalue_int = int(self.__gdata.values(nickname_WW, "dhw_V_spare_1"))
+        if (tempvalue_int > 0):
+          tempvalue = format(tempvalue_int, "2d")
+        else:
+          tempvalue = "---"
+        leftparameter_t = (nickname_WW, "dhw_V_spare_1", tempvalue)
+
+        rightparameter_t = ("", "", None)
+        if self.__gdata.IsSolarAvailable():
+          tempvalue = format(int(self.__gdata.values(nickname_SO, "V_dhw_optimize")), "d")
+          rightparameter_t = (nickname_SO, "V_dhw_optimize", tempvalue)
+        self.__DrawColumn(leftparameter_t, rightparameter_t)
+
+        # 25... line(s)
+        tempvalue_int = int(self.__gdata.values(nickname_WW, "dhw_V_spare_2"))
+        tempvalue = self.__GetStrDHW_OperationMode(tempvalue_int)
+        leftparameter_t = (nickname_WW, "dhw_V_spare_2", tempvalue)
+
+        rightparameter_t = ("", "", None)
+        if self.__gdata.IsSolarAvailable():
+          tempvalue = format(float(self.__gdata.values(nickname_SO, "Tsp1_3_TS10")), ".1f")
+          if self.IsTemperaturInValidRange(tempvalue):
+            rightparameter_t = (nickname_SO, "Tsp1_3_TS10", tempvalue)
+        self.__DrawColumn(leftparameter_t, rightparameter_t)
+
+        # 26... line(s)
+        tempvalue_int = int(self.__gdata.values(nickname_WW, "V_WW_desinfekt"))
+        tempvalue = self.__GetStrOnOff(tempvalue_int)
+        leftparameter_t = (nickname_WW, "V_WW_desinfekt", tempvalue)
+
+        rightparameter_t = ("", "", None)
+        if self.__gdata.IsSolarAvailable():
+          tempvalue = format(float(self.__gdata.values(nickname_SO, "Tspeicher_mid")), ".1f")
+          if self.IsTemperaturInValidRange(tempvalue):
+            rightparameter_t = (nickname_SO, "Tspeicher_mid", tempvalue)
+        self.__DrawColumn(leftparameter_t, rightparameter_t)
+
+        # 27... line(s)
+        tempvalue_int = int(self.__gdata.values(nickname_WW, "dhw_V_spare_3"))
+        tempvalue = self.__GetStrDHW_DisinfectionStatus(tempvalue_int)
+        leftparameter_t = (nickname_WW, "dhw_V_spare_3", tempvalue)
+
+        rightparameter_t = ("", "", None)
+        tempvalue = format(float(self.__gdata.values(nickname_SO, "Tspeicher2_unten")), ".1f")
+        if self.IsTemperaturInValidRange(tempvalue):
+          rightparameter_t = (nickname_SO, "Tspeicher2_unten", tempvalue)
+        self.__DrawColumn(leftparameter_t, rightparameter_t)
+
         leftparameter_t  = ("", "", None)
         rightparameter_t = ("", "", None)
         if self.__gdata.IsSolarAvailable():
-            tempvalue = format(int(self.__gdata.values(nickname_SO, "V_ch_optimize")), "d")
-            rightparameter_t = (nickname_SO, "V_ch_optimize", tempvalue)
-            self.__DrawColumn(leftparameter_t, rightparameter_t)
-
-            leftparameter_t  = ("", "", None)
-            rightparameter_t = ("", "", None)
-            tempvalue = format(int(self.__gdata.values(nickname_SO, "V_dhw_optimize")), "d")
-            rightparameter_t = (nickname_SO, "V_dhw_optimize", tempvalue)
-            self.__DrawColumn(leftparameter_t, rightparameter_t)
-
-            leftparameter_t  = ("", "", None)
-            rightparameter_t = ("", "", None)
-            tempvalue = format(float(self.__gdata.values(nickname_SO, "Tsp1_3_TS10")), ".1f")
-            if self.IsTemperaturInValidRange(tempvalue):
-                rightparameter_t = (nickname_SO, "Tsp1_3_TS10", tempvalue)
-                self.__DrawColumn(leftparameter_t, rightparameter_t)
-
-            rightparameter_t = ("", "", None)
-            tempvalue = format(float(self.__gdata.values(nickname_SO, "Tspeicher_mid")), ".1f")
-            if self.IsTemperaturInValidRange(tempvalue):
-                rightparameter_t = (nickname_SO, "Tspeicher_mid", tempvalue)
-                self.__DrawColumn(leftparameter_t, rightparameter_t)
-
-            rightparameter_t = ("", "", None)
-            tempvalue = format(float(self.__gdata.values(nickname_SO, "Tspeicher2_unten")), ".1f")
-            if self.IsTemperaturInValidRange(tempvalue):
-                rightparameter_t = (nickname_SO, "Tspeicher2_unten", tempvalue)
-                self.__DrawColumn(leftparameter_t, rightparameter_t)
-
             rightparameter_t = ("", "", None)
             tempvalue = format(float(self.__gdata.values(nickname_SO, "T_kollektor2")), ".1f")
             if self.IsTemperaturInValidRange(tempvalue):
@@ -1126,18 +1171,52 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
             temptext = self.__DisplayColumn(nickname, "VWW_nachladung", tempvalue)
             if len(temptext) > 0: self.__text.insert("end", temptext)
 
-            #modified 08.09.2020 'T-Soll max' added on GUI
-            tempvalue_int = int(self.__gdata.values(nickname, "T_setpoint_max"))
-            tempvalue = format(tempvalue_int, "2d")
-            temptext = self.__DisplayColumn(nickname, "T_setpoint_max", tempvalue)
-            if ((len(temptext) > 0) and tempvalue_int > 0): self.__text.insert("end", temptext)
+            tempvalue = self.__GetStrOnOff(self.__gdata.values(nickname, "V_WW_einmalladung"))
+            temptext = self.__DisplayColumn(nickname, "V_WW_einmalladung", tempvalue)
+            self.__text.insert("end", temptext)
 
-            ####
-            # temptext=" Einmalladung         : "+self.__GetStrOnOff(self.__gdata.values(nickname,"VWW_einmalladung"))+'\n'
-            # self.__text.insert("end",temptext)
-            # temptext=" Desinfektion         : "+self.__GetStrOnOff(self.__gdata.values(nickname,"VWW_desinfekt"))+'\n'
-            # self.__text.insert("end",temptext)
-            ##
+            #modified 08.09.2020 'T-Soll max' added on GUI
+            #modified 10.03.2026 old 'T-Soll max' renamed to 'T-Soll normal'
+            # new 'T-Soll max' used now only for Controller T-Max setup
+            tempvalue_int = int(self.__gdata.values(nickname, "T_setpoint_max"))
+            if (tempvalue_int > 0):
+              tempvalue = format(tempvalue_int, "2d")
+            else:
+              tempvalue = "---"
+            temptext = self.__DisplayColumn(nickname, "T_setpoint_max", tempvalue)
+            if len(temptext) > 0: self.__text.insert("end", temptext)
+
+            #modified 10.03.2026 see above
+            tempvalue_int = int(self.__gdata.values(nickname, "dhw_V_spare_4"))
+            if (tempvalue_int > 0):
+              tempvalue = format(tempvalue_int, "2d")
+            else:
+              tempvalue = "---"
+            temptext = self.__DisplayColumn(nickname, "dhw_V_spare_4", tempvalue)
+            if len(temptext) > 0: self.__text.insert("end", temptext)
+
+            tempvalue_int = int(self.__gdata.values(nickname, "dhw_V_spare_1"))
+            if (tempvalue_int > 0):
+              tempvalue = format(tempvalue_int, "2d")
+            else:
+              tempvalue = "---"
+            temptext = self.__DisplayColumn(nickname, "dhw_V_spare_1", tempvalue)
+            if len(temptext) > 0: self.__text.insert("end", temptext)
+
+            tempvalue_int = int(self.__gdata.values(nickname, "dhw_V_spare_2"))
+            tempvalue = self.__GetStrDHW_OperationMode(tempvalue_int)
+            temptext = self.__DisplayColumn(nickname, "dhw_V_spare_2", tempvalue)
+            if len(temptext) > 0: self.__text.insert("end", temptext)
+
+            tempvalue_int = int(self.__gdata.values(nickname, "V_WW_desinfekt"))
+            tempvalue = self.__GetStrOnOff(tempvalue_int)
+            temptext = self.__DisplayColumn(nickname, "V_WW_desinfekt", tempvalue)
+            if len(temptext) > 0: self.__text.insert("end", temptext)
+
+            tempvalue_int = int(self.__gdata.values(nickname, "dhw_V_spare_3"))
+            tempvalue = self.__GetStrDHW_DisinfectionStatus(tempvalue_int)
+            temptext = self.__DisplayColumn(nickname, "dhw_V_spare_3", tempvalue)
+            if len(temptext) > 0: self.__text.insert("end", temptext)
 
         if (self.__gdata.IsSyspartUpdate(nickname) and self.__hexdump_window):
             temptext = self.__gdata.values(nickname, "hexdump")
@@ -1152,8 +1231,11 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
             self.__text.insert("end", "  52   so ta 34 00 P1 P2  Hotwater   heater      2 wire bus\n")
             self.__text.insert("end", "  53   so ta 35 00 P1 P2  Hotwater   heater      2 wire bus\n")
             self.__text.insert("end", " 269   so ta FF 00 00 0D  Hotwater   IPM         system dependent\n")
+            self.__text.insert("end", " 277   so ta FF 00 00 15  Hotwater   heater      2 wire bus\n")
             self.__text.insert("end", " 467   so ta FF 00 00 D3  Hotwater   heater      2 wire bus\n")
             self.__text.insert("end", " 468   so ta FF 00 00 D4  Hotwater   heater      2 wire bus\n")
+            self.__text.insert("end", " 757   so ta FF 00 01 F5  Hotwater   Cxyz        EMS2\n")
+            self.__text.insert("end", " 795   so ta FF 00 02 1B  Hotwater   Cxyz        EMS2\n")
             self.__text.insert("end", " 797   so ta FF 00 02 1D  Hotwater   Cxyz        EMS2\n")
             self.__text.insert("end", "       so := source (88; 90; Ax with x := 0...7)\n")
             self.__text.insert("end", "          ta := target\n")
@@ -1220,7 +1302,7 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
             if len(temptext) > 0: self.__text.insert("end", temptext)
 
             # if Controller is 'Cxyz'-type then display: 'DailySolarGain' and 'TotalSolarGain'
-            if self.__gdata.controller_type_nr() == ht_const.CONTROLLER_TYPE_NR_Cxyz:
+            if self.__gdata.controller_type_EMS():
                 tempvalue = format(float(self.__gdata.values(nickname, "V_ertrag_tag_calc")), ".1f")
                 temptext = self.__DisplayColumn(nickname, "V_ertrag_tag_calc", tempvalue)
                 if len(temptext) > 0: self.__text.insert("end", temptext)
@@ -1428,6 +1510,36 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
             elif ivalue == 4:
                 rtnstr = "Comfort3"
         return rtnstr
+
+    def __GetStrDHW_OperationMode(self, ivalue):
+      """
+          return of DHW operation-mode (as string).
+      """
+      rtnstr = "---"
+      ivalue = int(ivalue)
+      cmd_str = {
+        -1 : "---",
+        0  : "OFF",
+        1  : "LOW",
+        2  : "HIGH",
+        3  : "HC",
+        4  : "WW"
+      }
+      if  ivalue in cmd_str:
+        rtnstr = cmd_str[ivalue]
+      return rtnstr
+
+    def __GetStrDHW_DisinfectionStatus(self, ivalue):
+      """
+          return of DHW disinfection-status (as string).
+      """
+      rtnstr = "---"
+      ivalue = int(ivalue)
+      if ivalue == 0:
+        rtnstr = "Manual"
+      elif ivalue > 0:
+        rtnstr = "Auto"
+      return rtnstr
 
     def __colourconfig(self, obj):
         """

@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2017 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2017 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@
 # Ver:0.1.8  / Datum 05.10.2015 first release
 # Ver:0.2.x  / Datum xx.yy.2017 renaming modul and test-releases
 # Ver:0.3    / Datum 19.06.2017 fixed errors
+# Ver:0.4    / 2026-03-04 setDaemon() call deprecated,
+#                          set Thread-flag 'daemon' to 'True' instead.
 #################################################################
 
 import sys
@@ -108,10 +110,10 @@ class cSPS_cfg():
 #class cSPS_if(threading.Thread, cSPS_cfg, heater_data=data.cdata):
 class cSPS_if(threading.Thread, cSPS_cfg):
     """class 'cSPS_if' is used as SPS-communication-server and cmd-parsing
-        Method 'run' is the SPS-server and runs endless. 
+        Method 'run' is the SPS-server and runs endless.
           It listen to one SPS-client for connection, execute his command
           and returns the value to client.
-        Method 'stop' stops the current running SPS-server. 
+        Method 'stop' stops the current running SPS-server.
         Method 'dump_command_mapping' writes the SPS command-mapping to one
           CSV-File.
         Method 'get_command_mapping' returns the SPS command-mapping.
@@ -121,7 +123,7 @@ class cSPS_if(threading.Thread, cSPS_cfg):
                  loglevel_in=None,
                  csvfilepathname_in=None):
         # init inherited classes
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         cSPS_cfg.__init__(self, cfgtype = configtype)
 
         self.__heater_data = heater_data_obj
@@ -199,9 +201,9 @@ class cSPS_if(threading.Thread, cSPS_cfg):
         self.__SPS_special_map.append(("special", "S"))
 
     def __SPS_cmd_mapping(self):
-        """ This method generates command-mapping from sps_command to 
+        """ This method generates command-mapping from sps_command to
             ht-bus nickname and logitem-names.
-            This is required to get the real nickname and logitem-name 
+            This is required to get the real nickname and logitem-name
             for reading the values from the global data-structure 'data.cdata'.
             The real nickname and logitem-names are already defined in the
             central heater-configurationfile (xml) and here only used and
@@ -271,7 +273,7 @@ class cSPS_if(threading.Thread, cSPS_cfg):
             self._logging.warning(errorstr)
             rtn = ( None, None )
         return rtn
-            
+
 
     def run(self):
         """ endless running thread waiting for clients to be connected and command-requests.
@@ -318,7 +320,7 @@ class cSPS_if(threading.Thread, cSPS_cfg):
                     except:
                         errorstr="cSPS_if.run();Error;parsing error:cmd: {0}".format(data)
                         self._logging.info(errorstr)
-                            
+
                     if nickname != 'special' and nickname != None:
                         itemvalue = self.__heater_data.values(nickname, itemname)
                     else:
@@ -369,11 +371,11 @@ class cSPS_if(threading.Thread, cSPS_cfg):
             except:
                 errorstr = "cSPS_if.dump_command_mapping();Error;can't open csv-file:{0}".format(csvfilepath)
                 self._logging.critical(errorstr)
-                
+
         tmpstr = "sps_cmd; nickname; accessname\n"
         if writecsvfile:
             hcsvfile.write(tmpstr)
-            
+
         while index < len(self.__SPS_accessname_cmd_indexed):
             ( cmd, nickname, item ) = self.__SPS_accessname_cmd_indexed[index]
             strtemp = "{0};{1};{2}\n".format(cmd, nickname, item)

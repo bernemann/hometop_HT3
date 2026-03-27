@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2015 Norbert S. <junky-zs@gmx.de>
+## Copyright (c) 2015 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -28,19 +28,27 @@
 # Ver:0.2      2022-11-22 ip_address() added.
 #                           redesign of exception-handling
 #                           modifications for issue:#23
+# Ver:0.3      2026-03-19 exceptions modified.
+#                         import order corrected.
+#                         format {x} placeholder-index added.
 #################################################################
 
-import socketserver, socket, serial
-import threading, queue 
-import ht_utils, logging
+import logging
+import os
+import queue
+import socket
+import socketserver
+import threading
+import time
 import xml.etree.ElementTree as ET
-import time, os
-from threading import Condition
+import ht_utils
+import serial
+#zs$ from threading import Condition
 
 __author__  = "junky-zs"
 __status__  = "draft"
-__version__ = "0.2"
-__date__    = "2022-11-22"
+__version__ = "0.3"
+__date__    = "2026-03-19"
 
 #---------------------------------------------------------------------------
 #   targettype related stuff
@@ -78,8 +86,7 @@ _devicetypes = {
     INT_DT_NOTSET: DT_NOTSET,
 }
 def _getDeviceType(devicetype):
-    """Fkt returns devicetype as string
-    """
+    """Fkt returns devicetype as string."""
     return "{0}".format(_devicetypes.get(devicetype))
 
 #---------------------------------------------------------------------------
@@ -98,15 +105,14 @@ INT_PRIO_HIGH   = 10
 INT_PRIO_URGEND =  0
 
 class cthread_info(object):
-    """ class 'cthread_info' used to write thread-trace infos to file.
-    """
+    """ class 'cthread_info' used to write thread-trace infos to file.  """
     counter = 0
     thread_lock = threading.Lock()
     # flag for:
     ## logging to file := True or
     ## print on stdout := False
     log2file_flag = True
-    
+
     def __init__(self):
         self.__threadrun=True
         self.__queue = queue.Queue()
@@ -116,18 +122,17 @@ class cthread_info(object):
             # create logfile
             logfilename = "ht_proxy_thread_debug.log"
             try:
-                self.__logfileObj = open("./../var/log/{}".format(logfilename), "a")
+                self.__logfileObj = open("./../var/log/{0}".format(logfilename), "a")
             except:
-                self.__logfileObj = open("./var/log/{}".format(logfilename), "a")
+                self.__logfileObj = open("./var/log/{0}".format(logfilename), "a")
 
     def __del__(self):
-        if self.__logfileObj != None:
+        if self.__logfileObj is not None:
             self.__logfileObj.close()
         self.stop()
 
     def stop(self):
-        """ stop of currently running thread.
-        """
+        """ stop of currently running thread. """
         self.__threadrun=False
 
     def add(self, thread_handle):
@@ -155,7 +160,7 @@ class cthread_info(object):
 
         if current_loglevel == logging.DEBUG:
             self.__write_debug_stream("-"*35 + " Thread-Debug start "+ "-"*35)
-        header_str = "--- {:11}; {:^15}; {:6}; {:^50}; {:>3}; {:>3} ---".format("Time","ID","action","detail","registered","active_threads")
+        header_str = "--- {0:11}; {1:^15}; {2:6}; {3:^50}; {4:>3}; {5:>3} ---".format("Time","ID","action","detail","registered","active_threads")
         while self.__threadrun:
             try:
                 thread_actions = self.__queue.get()
@@ -164,17 +169,16 @@ class cthread_info(object):
                 if current_loglevel == logging.DEBUG:
                     (identifier ,action, thread_info, registered, thread_amount) = thread_actions
                     timestamp = str(time.time())[:15]
-                    debug_str  = "{:15}; {}; {}; {}; {}; {}".format(timestamp, identifier, action, thread_info, registered, thread_amount)
+                    debug_str  = "{0:15}; {1}; {2}; {3}; {4}; {5}".format(timestamp, identifier, action, thread_info, registered, thread_amount)
                     if not (header_print_counter % 20):
                         self.__write_debug_stream(header_str)
                     header_print_counter += 1
                     self.__write_debug_stream(debug_str)
-            except:
+            except Exception:
                 time.sleep(1)
-                
+
     def _countervalue(self):
-        """ returns currently registered threads.
-        """
+        """ returns currently registered threads. """
         rtnvalue = 0
         try:
             cthread_info.thread_lock.acquire()
@@ -200,8 +204,7 @@ class cthread_info(object):
             print(debug_str)
 
     def __inc_counter(self):
-        """ increments currently registered thread-number.
-        """
+        """ increments currently registered thread-number. """
         try:
             cthread_info.thread_lock.acquire()
             cthread_info.counter += 1
@@ -209,8 +212,7 @@ class cthread_info(object):
             cthread_info.thread_lock.release()
 
     def __dec_counter(self):
-        """ decrements currently registered thread-number.
-        """
+        """ decrements currently registered thread-number. """
         try:
             cthread_info.thread_lock.acquire()
             if cthread_info.counter > 0:
@@ -242,7 +244,7 @@ class cthread_debug(threading.Thread):
     global _thread_info
 
     def __init__(self, loglevel):
-        threading.Thread.__init__(self, name = "thread_debug")
+        threading.Thread.__init__(self, name="thread_debug")
         self._loglevel = loglevel
 
     def run(self):
@@ -250,7 +252,7 @@ class cthread_debug(threading.Thread):
             has to be called with: start().
         """
         _thread_info.show_forever(self._loglevel)
-       
+
 class cportread(cthread):
     """class 'cportread' for reading serial asynchronous data from already
        open port and send received datastream to '_txqueue'
@@ -264,7 +266,7 @@ class cportread(cthread):
         self.__port=port
         self.__devicetype=devicetype
         self.__queueprio=INT_PRIO_MEDIUM
-        self.__thread_infostr = "{}; ID:{}".format(self.getName(), id(self))
+        self.__thread_infostr = "{0}; ID:{1}".format(self.getName(), id(self))
 
     def __del__(self):
         self.stop()
@@ -275,15 +277,15 @@ class cportread(cthread):
             to all currently available client-queues.
             has to be called with: start().
         """
-        _ClientHandler.log_debug("{}; start; devicetype:{}".format(self.__thread_infostr, self.__devicetype))
+        _ClientHandler.log_debug("{0}; start; devicetype:{1}".format(self.__thread_infostr, self.__devicetype))
         _raise_condition = False
         value = 0
         while self.__threadrun:
             if _ClientHandler.get_clientcounter() > 0:
                 try:
                     value = self.__port.read(5)
-                except:
-                    _ClientHandler.log_critical("{}; Error; couldn't read serial-port".format(self.__thread_infostr))
+                except Exception as e:
+                    _ClientHandler.log_critical("{0}; Error;{1}; couldn't read serial-port".format(self.__thread_infostr,  e))
                     _raise_condition = True
                     self.stop()
                     break
@@ -296,33 +298,33 @@ class cportread(cthread):
                                     #  clientQueue[0]:=Client-ID; clientQueue[1]:=queue
                                     #    put value into queue
                                     clientQueue[1].put(value)
-                                except:
-                                    _ClientHandler.log_info("{}; Error; Client-ID:{}; couldn't write to queue".format(self.__thread_infostr, clientQueue[0]))
-                                    break;
+                                except Exception as e:
+                                    _ClientHandler.log_info("{0}; Error;{1}; Client-ID:{2}; couldn't write to queue".format(self.__thread_infostr, e,  clientQueue[0]))
+                                    break
                             else:
-                                break;
+                                break
             else:
                 time.sleep(0.5)
                 try:
                     self.__port.reset_input_buffer()
-                except:
-                    _ClientHandler.log_critical("{}; Error; serial-port not open".format(self.__thread_infostr))
+                except Exception as e:
+                    _ClientHandler.log_critical("{0}; Error;{1}; serial-port not open".format(self.__thread_infostr,  e))
                     _raise_condition = True
                     self.stop()
                     break
-        end_str = "{}; end; devicetype:{}".format(self.__thread_infostr, self.__devicetype)
-        execption_str = "{}; unexpected end; devicetype:{}".format(self.__thread_infostr, self.__devicetype)
+        end_str = "{0}; end; devicetype:{1}".format(self.__thread_infostr, self.__devicetype)
+        execption_str = "{0}; unexpected end; devicetype:{1}".format(self.__thread_infostr, self.__devicetype)
         _ClientHandler.log_debug(end_str)
         if _raise_condition and not self.__stopcalled:
             _ClientHandler.log_critical(execption_str)
             self.__port.close()
-            raise portNotOpenError
+            raise OSError
 
     def stop(self):
         """ stop the running 'cportread'-thread and send all startet
             socketsendThreads one 'None'-info as termination-tag.
         """
-        _ClientHandler.log_debug("{}; stop() called".format(self.__thread_infostr))
+        _ClientHandler.log_debug("{0}; stop() called".format(self.__thread_infostr))
         # stop all running socketsendThreads with dummy-data: None
         for clientQueue in _ClientHandler._txqueue.items():
             clientQueue[1].put_nowait(None)
@@ -343,7 +345,7 @@ class cportwrite(cthread, ht_utils.cht_utils):
         self.__port=port
         self.__devicetype=devicetype
         self.__queueprio=INT_PRIO_MEDIUM
-        self.__thread_infostr = "{}; ID:{}".format(self.getName(), id(self))
+        self.__thread_infostr = "{0}; ID:{1}".format(self.getName(), id(self))
 
 
     def __del__(self):
@@ -359,7 +361,7 @@ class cportwrite(cthread, ht_utils.cht_utils):
             #      size := amount of databytes including class, detail and option but without starttag
             #
         """
-        _ClientHandler.log_debug("{}; start; devicetype:{}".format(self.__thread_infostr, self.__devicetype))
+        _ClientHandler.log_debug("{0}; start; devicetype:{1}".format(self.__thread_infostr, self.__devicetype))
         while self.__threadrun:
             if _ClientHandler.get_clientcounter() > 0:
                 # preset local buffers
@@ -390,11 +392,11 @@ class cportwrite(cthread, ht_utils.cht_utils):
                         # check for open serial port.
                         #  if not open terminate the thread
                         if not self.__port.is_open:
-                            _ClientHandler.log_critical("{}; Error; Client-ID:{}; serial port not open".format(self.__thread_infostr, clientQueue[0]))
+                            _ClientHandler.log_critical("{0}; Error; Client-ID:{1}; serial port not open".format(self.__thread_infostr, clientQueue[0]))
                             self.stop()
                             break
                     except Exception as e :
-                        _ClientHandler.log_critical("{}; Error; Client-ID:{}; {}".format(self.__thread_infostr, clientQueue[0], e))
+                        _ClientHandler.log_critical("{0}; Error; Client-ID:{1}; {2}".format(self.__thread_infostr, clientQueue[0], e))
                         self.stop()
                         break
 
@@ -421,14 +423,14 @@ class cportwrite(cthread, ht_utils.cht_utils):
                         if self.__length > 0:
                             self.__msgbytes.extend(readbuffer[5:self.__length+5])
                     except Exception as e:
-                        _ClientHandler.log_critical("{}; Error; Client-ID:{}; {}".format(self.__thread_infostr, clientQueue[0], e))
+                        _ClientHandler.log_critical("{0}; Error; Client-ID:{1}; {2}".format(self.__thread_infostr, clientQueue[0], e))
                         break
 
                     # 4. send message-class/detail/option and (data-bytes if available) to transceiver_if
                     try:
                         self.__send_2_transceiver_if(clientQueue[0], self.__msgbytes, msg_class, msg_detail, msg_option)
-                    except  Exception as e:
-                        _ClientHandler.log_critical("{}; Error; Client-ID:{}; {}".format(self.__thread_infostr, clientQueue[0], e))
+                    except Exception as e:
+                        _ClientHandler.log_critical("{0}; Error; Client-ID:{1}; {2}".format(self.__thread_infostr, clientQueue[0], e))
                         self.stop()
                         break
             else:
@@ -436,17 +438,16 @@ class cportwrite(cthread, ht_utils.cht_utils):
                 try:
                     self.__port.reset_output_buffer()
                 except Exception as e:
-                    _ClientHandler.log_critical("{}; Error; {}".format(self.__thread_infostr, e))
+                    _ClientHandler.log_critical("{0}; Error; {1}".format(self.__thread_infostr, e))
                     self.stop()
                     break
 
-        end_str = "{}; end; devicetype:{}".format(self.__thread_infostr, self.__devicetype)
+        end_str = "{0}; end; devicetype:{1}".format(self.__thread_infostr, self.__devicetype)
         _ClientHandler.log_debug(end_str)
 
     def stop(self):
-        """ stop the running 'cportwrite'-thread.
-        """
-        _ClientHandler.log_debug("{}; stop() called".format(self.__thread_infostr))
+        """ stop the running 'cportwrite'-thread. """
+        _ClientHandler.log_debug("{0}; stop() called".format(self.__thread_infostr))
         self.__threadrun=False
         self.__stopcalled=True
 
@@ -469,8 +470,8 @@ class cportwrite(cthread, ht_utils.cht_utils):
         try:
             crc=self.make_crc(data, len(data))
             data += [crc]
-        except:
-            _ClientHandler.log_critical("{}.send_2_transceiver_if(); Error; Client-ID:{}; couldn't make crc".format(self.getName(), ClientID))
+        except Exception as e:
+            _ClientHandler.log_critical("{0}.send_2_transceiver_if(); Error;{1}; Client-ID:{2}; couldn't make crc".format(self.getName(), e,  ClientID))
             raise
 
         try:
@@ -482,9 +483,9 @@ class cportwrite(cthread, ht_utils.cht_utils):
                 time.sleep(0.005)
                 transmit_str += format(data[index], "02x") + " "
                 index += 1
-            _ClientHandler.log_debug("{}; Client-ID:{}; tx to transceiver:{}".format(self.getName(), ClientID, transmit_str))
-        except:
-            _ClientHandler.log_critical("{}.send_2_transceiver_if(); Error; Client-ID:{}; serial-port not open".format(self.getName(), ClientID))
+            _ClientHandler.log_debug("{0}; Client-ID:{1}; tx to transceiver:{2}".format(self.getName(), ClientID, transmit_str))
+        except Exception as e:
+            _ClientHandler.log_critical("{0}.send_2_transceiver_if(); Error;{1}; Client-ID:{2}; serial-port not open".format(self.getName(), e,  ClientID))
             raise ConnectionError
 
 class cht_transceiver_if(cthread):
@@ -497,18 +498,28 @@ class cht_transceiver_if(cthread):
     """
     global _ClientHandler
     def __init__(self, serialdevice="/dev/ttyUSB0", baudrate=19200, devicetype=DT_RX):
-        cthread.__init__(self, "transceiver_if_Thread")
-        self.__serialdevice = str(serialdevice)
-        self.__baudrate     = baudrate
-        self.__devicetype   = devicetype
-        self.__port = None
-        self.__comtx_thread = None
-        self.__comrx_thread = None
-        self.__thread_infostr = "{}; ID:{}".format(self.getName(), id(self))
+      """
+      Constructor
+
+      @param serialdevice DESCRIPTION (defaults to "/dev/ttyUSB0")
+      @type TYPE (optional)
+      @param baudrate DESCRIPTION (defaults to 19200)
+      @type TYPE (optional)
+      @param devicetype DESCRIPTION (defaults to DT_RX)
+      @type TYPE (optional)
+      """
+      cthread.__init__(self, "transceiver_if_Thread")
+      self.__serialdevice = str(serialdevice)
+      self.__baudrate     = baudrate
+      self.__devicetype   = devicetype
+      self.__port = None
+      self.__comtx_thread = None
+      self.__comrx_thread = None
+      self.__thread_infostr = "{0}; ID:{1}".format(self.getName(), id(self))
 
     def __del__(self):
         self.stop()
-        if self.__port != None:
+        if self.__port is not None:
             self.__port.close()
         cthread.__del__(self)
 
@@ -523,7 +534,7 @@ class cht_transceiver_if(cthread):
             # open serial port with read-timeout for reading HT-data
             self.__port = serial.Serial(self.__serialdevice, self.__baudrate, timeout=0.01)
         except ConnectionError as e:
-            _ClientHandler.log_critical("{}; Error; {}".format(self.__thread_infostr, e))
+            _ClientHandler.log_critical("{0}; Error; {1}".format(self.__thread_infostr, e))
             raise ConnectionError("Can't open serial port")
         else:
             try:
@@ -532,7 +543,7 @@ class cht_transceiver_if(cthread):
                 self.__comtx_thread.setDaemon(True)
                 self.__comtx_thread.start()
             except ConnectionError as e:
-                _ClientHandler.log_critical("{}; Error; {}".format(self.__thread_infostr, e))
+                _ClientHandler.log_critical("{0}; Error; {1}".format(self.__thread_infostr, e))
                 self.stop()
                 raise ConnectionError("serial port for 'write' not available")
             else:
@@ -542,7 +553,7 @@ class cht_transceiver_if(cthread):
                     self.__comrx_thread.setDaemon(True)
                     self.__comrx_thread.start()
                 except ConnectionError as e:
-                    _ClientHandler.log_critical("{}; Error; {}".format(self.__thread_infostr, e))
+                    _ClientHandler.log_critical("{0}; Error; {1}".format(self.__thread_infostr, e))
                     self.stop()
                     raise ConnectionError("serial port for 'read' not available")
 
@@ -557,12 +568,11 @@ class cht_transceiver_if(cthread):
             self.__comtx_thread.join()
 
         # should never been reached, only in error-cases
-        _ClientHandler.log_critical("{}; Error; unexpected termination".format(self.__thread_infostr))
-        
+        _ClientHandler.log_critical("{0}; Error; unexpected termination".format(self.__thread_infostr))
+
     def stop(self):
-        """ stop the running 'cht_transceiver_if' thread.
-        """
-        _ClientHandler.log_debug("{}; stop() called".format(self.__thread_infostr))
+        """ stop the running 'cht_transceiver_if' thread. """
+        _ClientHandler.log_debug("{0}; stop() called".format(self.__thread_infostr))
         if self.__comtx_thread is not None:
             self.__comtx_thread.stop()
         if self.__comrx_thread is not None:
@@ -578,22 +588,21 @@ class csocketsendThread(cthread):
         self._request=request
         self.__threadrun=True
         self.__queueprio=INT_PRIO_MEDIUM
-        self.__thread_infostr = "{}; ID:{}".format(self.getName(), id(self))
+        self.__thread_infostr = "{0}; ID:{1}".format(self.getName(), id(self))
 
     def __del__(self):
         cthread.__del__(self)
 
     def run(self):
-        """ gets data from queue and send them to connected socket-client.
-        """
-        _ClientHandler.log_debug("{}; start".format(self.__thread_infostr))
+        """ gets data from queue and send them to connected socket-client."""
+        _ClientHandler.log_debug("{0}; start".format(self.__thread_infostr))
         self._tx=None
         while self.__threadrun:
             try:
                 # get queue-value in blocking mode
                 self._tx=self._queue.get(True)
-            except:
-                error_str = "{}; Error; on TXqueue.get()".format(self.__thread_infostr)
+            except Exception as e:
+                error_str = "{0}; Error;{1}; on TXqueue.get()".format(self.__thread_infostr,  e)
                 _ClientHandler.log_critical(error_str)
                 raise ConnectionError(error_str)
             finally:
@@ -611,18 +620,18 @@ class csocketsendThread(cthread):
             except (BrokenPipeError, ConnectionResetError) as e:
 ##                print("csocketsendThread; Error:{}".format(e))
                 pass
-            except:
-                error_str = "{}; Error; on _request.sendall()".format(self.__thread_infostr)
+            except Exception as e:
+                error_str = "{0}; Error;{1}; on _request.sendall()".format(self.__thread_infostr,  e)
                 _ClientHandler.log_critical(error_str)
                 raise ConnectionError(error_str)
 
-        _ClientHandler.log_debug("{}; end".format(self.__thread_infostr))
+        _ClientHandler.log_debug("{0}; end".format(self.__thread_infostr))
 
     def stop(self):
         """ stop the running 'csocketsendThread'-thread.
             send one dummy 'None'-byte to unblock the waiting queue.
         """
-        _ClientHandler.log_debug("{}; stop() called".format(self.__thread_infostr))
+        _ClientHandler.log_debug("{0}; stop() called".format(self.__thread_infostr))
         self.__threadrun=False
         # put dummy-info in queue to unblock the thread
         self._queue.put_nowait(None)
@@ -643,34 +652,29 @@ class cClientHandling(cthread, ht_utils.clog):
         self._rxqueue={}
         self._txqueue={}
         self._thread={}
-        self.__thread_infostr = "{}".format(self.getName())
+        self.__thread_infostr = "{0}".format(self.getName())
 
     def __del__(self):
         cthread.__del__(self)
 
     def log_critical(self, logmessage):
-        """ log message with CRITICAL-tag.
-        """
+        """ log message with CRITICAL-tag."""
         self._logging.critical(logmessage)
 
     def log_error(self, logmessage):
-        """ log message with ERROR-tag.
-        """
+        """ log message with ERROR-tag."""
         self._logging.error(logmessage)
 
     def log_warning(self, logmessage):
-        """ log message with WARNING-tag.
-        """
+        """ log message with WARNING-tag. """
         self._logging.warning(logmessage)
 
     def log_info(self, logmessage):
-        """ log message with INFO-tag.
-        """
+        """ log message with INFO-tag. """
         self._logging.info(logmessage)
 
     def log_debug(self, logmessage):
-        """ log message with DEBUG-tag.
-        """
+        """ log message with DEBUG-tag. """
         self._logging.debug(logmessage)
 
     def inc_indexcounter(self):
@@ -685,22 +689,19 @@ class cClientHandling(cthread, ht_utils.clog):
         return counter
 
     def inc_clientcounter(self):
-        """ increments that currently registered client amount
-        """
+        """ increments that currently registered client amount."""
         self._lock.acquire()
         self._clientcounter+=1
         self._lock.release()
 
     def dec_clientcounter(self):
-        """ decrements that currently registered client amount
-        """
+        """ decrements that currently registered client amount."""
         self._lock.acquire()
         self._clientcounter-=1
         self._lock.release()
 
     def get_clientcounter(self):
-        """ returns the currently registered clients
-        """
+        """ returns the currently registered clients."""
         self._lock.acquire()
         counter=self._clientcounter
         self._lock.release()
@@ -721,7 +722,7 @@ class cClientHandling(cthread, ht_utils.clog):
         self._thread.update({clientID:txThread})
         txThread.start()
         self._lock.release()
-        self._logger.info("{}; Client-ID:{} added; number of clients:{}".format(self.__thread_infostr, clientID, self._clientcounter))
+        self._logger.info("{0}; Client-ID:{1} added; number of clients:{2}".format(self.__thread_infostr, clientID, self._clientcounter))
 
     def remove_client(self, clientID):
         """ removes a client from:
@@ -738,7 +739,7 @@ class cClientHandling(cthread, ht_utils.clog):
         if len(self._txqueue) > 0:
             self._txqueue.pop(clientID)
         self._lock.release()
-        self._logger.info("{}; Client-ID:{} removed; number of clients:{}".format(self.__thread_infostr, clientID, self._clientcounter))
+        self._logger.info("{0}; Client-ID:{1} removed; number of clients:{2}".format(self.__thread_infostr, clientID, self._clientcounter))
 
 class cht_RequestHandler(socketserver.BaseRequestHandler):
     """ class used for every new client-request
@@ -755,19 +756,18 @@ class cht_RequestHandler(socketserver.BaseRequestHandler):
     threadrun = True
 
     def handle(self):
-        """ handles a new client-request
-        """
+        """ handles a new client-request """
         self._request_rx=None
         self._client_devicetype=None
         self.__queueprio=INT_PRIO_HIGH
         try:
             addrc, portc = self.client_address
             addrs, ports = self.server.server_address
-            _ClientHandler.log_info("RequestHandler; Client-ID:{}; {} connected".format(self._myownID, (addrc, portc)))
-            _ClientHandler.log_info("RequestHandler; Server   :{}".format((addrs,ports)))
-        except:
+            _ClientHandler.log_info("RequestHandler; Client-ID:{0}; {1} connected".format(self._myownID, (addrc, portc)))
+            _ClientHandler.log_info("RequestHandler; Server   :{0}".format((addrs,ports)))
+        except Exception as e:
             addrc, portc = self.client_address
-            _ClientHandler.log_critical("RequestHandler; Client-ID:{}; {} No connection possible".format(self._myownID, (addrc, portc)))
+            _ClientHandler.log_critical("RequestHandler; Client-ID:{0}; {1} No connection possible;Error;{2}".format(self._myownID, (addrc, portc),  e))
             raise
         # wait for client registration
         self.__waitfor_client_register()
@@ -775,14 +775,14 @@ class cht_RequestHandler(socketserver.BaseRequestHandler):
         _ClientHandler.add_client(self._myownID, self.request)
         self._rxqueue=_ClientHandler._rxqueue.get(self._myownID)
 
-        _ClientHandler.log_debug("RequestHandler; Client-ID:{}; socket.receive thread start".format(self._myownID))
+        _ClientHandler.log_debug("RequestHandler; Client-ID:{0}; socket.receive thread start".format(self._myownID))
         # run thread-loop
         while cht_RequestHandler.threadrun:
             try:
                 self._request_rx=self.request.recv(60)
             except Exception as e:
                 # closed by peer
-                _ClientHandler.log_info("RequestHandler; Client-ID:{}; {} disconnected".format(self._myownID, (addrc, portc)))
+                _ClientHandler.log_info("RequestHandler; Client-ID:{0}; {1} disconnected".format(self._myownID, (addrc, portc)))
                 # terminate the thread
                 break
             if len(self._request_rx) > 0:
@@ -792,15 +792,15 @@ class cht_RequestHandler(socketserver.BaseRequestHandler):
                     request_rxstr=""
                     for index in range(len(self._request_rx)):
                         request_rxstr += format(self._request_rx[index], "02x") + " "
-                    _ClientHandler.log_debug("RequestHandler; Client-ID:{}; recv:{}".format(self._myownID, request_rxstr))
+                    _ClientHandler.log_debug("RequestHandler; Client-ID:{0}; recv:{1}".format(self._myownID, request_rxstr))
                 except Exception as e:
-                    _ClientHandler.log_critical("RequestHandler; Client-ID:{}; _rxqueue.put():{}".format(self._myownID, e))
+                    _ClientHandler.log_critical("RequestHandler; Client-ID:{0}; _rxqueue.put():{1}".format(self._myownID, e))
                     break
             else:
-                _ClientHandler.log_info("RequestHandler; Client-ID:{}; {} disconnected".format(self._myownID, (addrc, portc)))
+                _ClientHandler.log_info("RequestHandler; Client-ID:{0}; {1} disconnected".format(self._myownID, (addrc, portc)))
                 break
 
-        _ClientHandler.log_debug("RequestHandler; Client-ID:{}; socket.receive thread end".format(self._myownID))
+        _ClientHandler.log_debug("RequestHandler; Client-ID:{0}; socket.receive thread end".format(self._myownID))
 
     def __waitfor_client_register(self):
         """ waits for client-information ('RX or 'MODEM')  and sends current internal ID
@@ -820,9 +820,9 @@ class cht_RequestHandler(socketserver.BaseRequestHandler):
         except socket.error as e:
             # Something else happened, handle error, exit, etc.
             _ClientHandler.log_critical("Client-ID:{0}; error '{1}' on socket.recv or socket.send".format(self._myownID, e))
-            raise
+            raise ConnectionError("{0}".format(e))
         except Exception as e:
-            _ClientHandler.log_critical("Client-ID:{0}; unkown error '{1}'".format(self._myownID,e))
+            _ClientHandler.log_critical("Client-ID:{0}; unkown error '{1}'".format(self._myownID, e))
             raise
         finally:
             self.request.settimeout(None)
@@ -837,8 +837,7 @@ class cht_RequestHandler(socketserver.BaseRequestHandler):
         cht_RequestHandler.threadrun = True
 
     def finish(self):
-        """ removes a registered client and set the thread-temination-flag.
-        """
+        """ removes a registered client and set the thread-temination-flag."""
         _ClientHandler.dec_clientcounter()
         _ClientHandler.remove_client(self._myownID)
         cht_RequestHandler.threadrun = False
@@ -866,18 +865,25 @@ class cproxyconfig():
     _configtransceiver={}
     _configtransceiver_devicenames={}
     def __init__(self, config_target=TT_SERVER, devicetype=DT_RX):
-        self.__configfilename=None
-        self.__root = None
-        self.__configtarget  = config_target.upper()
-        self.__devicetype    = devicetype
+      """
+      Constructor
+
+      @param config_target DESCRIPTION (defaults to TT_SERVER)
+      @type TYPE (optional)
+      @param devicetype DESCRIPTION (defaults to DT_RX)
+      @type TYPE (optional)
+      """
+      self.__configfilename=None
+      self.__root = None
+      self.__configtarget  = config_target.upper()
+      self.__devicetype    = devicetype
 
     def read_config(self,xmlconfigpathname):
-        """ reads the XML- configurationfile and extracs the data.
-        """
+        """ reads the XML- configurationfile and extracs the data."""
         try:
             self.__configfilename=xmlconfigpathname
             self.__tree = ET.parse(xmlconfigpathname)
-        except (NameError,EnvironmentError,IOError) as e:
+        except NameError as e:
             errorstr = "CRITICAL;cproxyconfig().read_config();Error;{0} on file:'{1}'\n".format(e.args[0], self.__configfilename)
             logfilepath = "./var/log/ht_proxy.log"
             try:
@@ -885,7 +891,7 @@ class cproxyconfig():
                 fobj.write(errorstr)
                 fobj.flush()
                 fobj.close()
-            except:
+            except Exception:
                 print(errorstr)
             raise Exception(EnvironmentError(errorstr))
         else:
@@ -938,14 +944,14 @@ class cproxyconfig():
                             fobj.write(errorstr)
                             fobj.flush()
                             fobj.close()
-                        except:
+                        except Exception:
                             print(errorstr)
                         raise Exception(ValueError(errorstr))
 
                 if self.__configtarget in (TT_SERVER):
                     for ht_transceiver in proxy_part.findall('ht_transceiver_if'):
                         devicename=ht_transceiver.attrib['devicename']
-                        if not devicename in cproxyconfig._configtransceiver_devicenames.keys():
+                        if devicename not in cproxyconfig._configtransceiver_devicenames.keys():
                             # setup 'devicename' and 'init.flag:=0'
                             cproxyconfig._configtransceiver_devicenames.update({devicename:0})
                         #initialise 'devicename'-dictionary
@@ -967,85 +973,85 @@ class cproxyconfig():
                             cproxyconfig._configtransceiver[devicename][0].update({str(item).upper():ht_transceiver.find(item).text})
                         else:
                             cproxyconfig._configtransceiver[devicename][0].update({str(item).upper():'None'})
-            except:
+            except Exception:
                 raise
 
     def serveraddress(self):
         try:
             rtn=cproxyconfig._configdata[self.__devicetype][0].get('SERVERADDRESS')
-        except:
+        except Exception:
             rtn=None
         return rtn
 
     def servername(self):
         try:
             rtn=cproxyconfig._configdata[self.__devicetype][0].get('SERVERNAME')
-        except:
+        except Exception:
             rtn=None
         return rtn
 
     def portnumber(self):
         try:
             rtn=cproxyconfig._configdata[self.__devicetype][0].get('PORTNUMBER')
-        except:
+        except Exception:
             rtn=0
         return int(rtn)
 
     def logfilepath(self):
         try:
             rtn=cproxyconfig._configdata[self.__devicetype][0].get('LOGFILEPATH')
-        except:
+        except Exception:
             rtn=None
         return os.path.normcase(rtn)
 
     def transceiver_serialdevice(self, devicename=None):
         try:
-            if devicename==None:
+            if devicename is None:
                 rtn=cproxyconfig._configtransceiver[self.__devicetype][0].get('SERIALDEVICE')
             else:
                 rtn=cproxyconfig._configtransceiver[devicename][0].get('SERIALDEVICE')
-        except:
+        except Exception:
             rtn=None
             raise
         return rtn
 
     def transceiver_baudrate(self, devicename=None):
         try:
-            if devicename==None:
+            if devicename is None:
                 rtn=cproxyconfig._configtransceiver[self.__devicetype][0].get('BAUDRATE')
             else:
                 rtn=cproxyconfig._configtransceiver[devicename][0].get('BAUDRATE')
-        except:
+        except Exception:
             rtn=None
         return int(rtn)
 
     def transceiver_config(self, devicename=None):
         try:
-            if devicename==None:
+            if devicename is None:
                 rtn=cproxyconfig._configtransceiver[self.__devicetype][0].get('CONFIG')
             else:
                 rtn=cproxyconfig._configtransceiver[devicename][0].get('CONFIG')
-        except:
+        except Exception:
             rtn=None
         return rtn
 
     def transceiver_devicetype(self, devicename=None):
         try:
-            if devicename==None:
+            if devicename is None:
                 rtn=cproxyconfig._configtransceiver[self.__devicetype][0].get('DEVICETYPE')
             else:
                 rtn=cproxyconfig._configtransceiver[devicename][0].get('DEVICETYPE')
-        except:
+        except Exception:
             rtn=None
         return rtn
 
     def transceiver_deviceaddress(self, devicename=None):
         try:
-            if devicename==None:
+            if devicename is None:
                 rtn=cproxyconfig._configtransceiver[self.__devicetype][0].get('DEVICEADDRESS_HEX')
             else:
                 rtn=cproxyconfig._configtransceiver[devicename][0].get('DEVICEADDRESS_HEX')
-        except:
+        except Exception:
             rtn=None
         return rtn
 
@@ -1058,14 +1064,12 @@ class cproxyconfig():
         return cproxyconfig._configtransceiver_devicenames.get(key)
 
     def clear_initflags(self):
-        """ resets all initialisiation-flags for all devicenames
-        """
+        """ resets all initialisiation-flags for all devicenames."""
         for key in self.devicename_keys():
             cproxyconfig._configtransceiver_devicenames.update({key:0})
 
 class cht_TCPserver(cthread):
-    """class 'cht_TCPserver', TCP server-class running as thread.
-    """
+    """class 'cht_TCPserver', TCP server-class running as thread. """
     global _ClientHandler
     # preset global Flags for 'reuse_address' on server.bind() and
     #  not blocking on server.close() call
@@ -1076,43 +1080,39 @@ class cht_TCPserver(cthread):
         cthread.__init__(self, "TCPserver_Thread")
         (self._ip_address, self._port_number) = ip_adr_and_port_t
         self._server = None
-    
+
     def __del__(self):
-        """ delete all used instances
-        """
+        """ delete all used instances."""
         cthread.__del__(self)
 
     def shutdown_server(self):
-        """ shutdown the running TCPserver
-        """
+        """ shutdown the running TCPserver. """
         if self._server is not None:
-            _ClientHandler.info("{}; shutdown_server() called".format(self.getName()))
+            _ClientHandler.info("{0}; shutdown_server() called".format(self.getName()))
             try:
                 self._server.shutdown()
-            except:
+            except Exception:
                 pass
 
     def server_close(self):
-        """ close the running server.
-        """
+        """ close the running server. """
         self._server.server_close()
         self._server = None
-        
+
     def run(self):
-        """ create Threading TCP server-object and run this endless
-        """
+        """ create Threading TCP server-object and run this endless. """
 
         try:
             self._server = socketserver.ThreadingTCPServer((self._ip_address, self._port_number), cht_RequestHandler)
         except ConnectionError as e:
-            error_str = "{}; error; {}".format(self.getName(), e)
+            error_str = "{0}; error; {1}".format(self.getName(), e)
             _ClientHandler.log_critical(error_str)
         else:
-            _ClientHandler.log_debug("{}; start".format(self.getName()))
+            _ClientHandler.log_debug("{0}; start".format(self.getName()))
             # running loop forever, until external 'shutdown'
             self._server.serve_forever()
 
-        _ClientHandler.log_critical("{}; unexpected termination".format(self.getName()))
+        _ClientHandler.log_critical("{0}; unexpected termination".format(self.getName()))
 
 class cht_proxy_daemon(cthread, cproxyconfig):
     """class 'cht_proxy_daemon' runs as server-daemon.
@@ -1142,8 +1142,8 @@ class cht_proxy_daemon(cthread, cproxyconfig):
             if not os.path.exists(abs_pathonly):
                 try:
                     os.makedirs(abs_pathonly)
-                except:
-                    print("Sorry, can't create that folder: {0}".format(abs_pathonly))
+                except Exception as e:
+                    print("Sorry, can't create that folder: {0};Error;{1}".format(abs_pathonly,  e))
                     print(" What can we do now with that bloody folder?")
                     print(" The Best and the Rest I can do -> fire and raise !")
                     raise
@@ -1159,21 +1159,21 @@ class cht_proxy_daemon(cthread, cproxyconfig):
             global _ClientHandler
             _ClientHandler=cClientHandling(self._logfile, loglevel=loglevel)
             _ClientHandler.log_info("---------------------------")
-            _ClientHandler.log_info("{}; logfile:'{}'".format(self.getName(), self._logfile))
-            _ClientHandler.log_info("{}; Rev:{}".format(self.getName(), __version__))
-            _ClientHandler.log_info("{}; init".format(self.getName()))
-           
-            if not self.servername() == None:
+            _ClientHandler.log_info("{0}; logfile:'{1}'".format(self.getName(), self._logfile))
+            _ClientHandler.log_info("{0}; Rev:{1}".format(self.getName(), __version__))
+            _ClientHandler.log_info("{0}; init".format(self.getName()))
+
+            if not self.servername() is None:
                 self._ip_address=self.servername()
             else:
-                if not self.serveraddress() == None:
+                if not self.serveraddress() is None:
                     self._ip_address=self.serveraddress()
                 else:
-                    _ClientHandler.log_info("{}; using common serveraddress".format(self.getName()))
+                    _ClientHandler.log_info("{0}; using common serveraddress".format(self.getName()))
                     self._ip_address=""
-        except:
+        except Exception as e:
             _ClientHandler=cClientHandling(self._logfile, loglevel=loglevel)
-            _ClientHandler.log_critical("{}; error; can't get/set configurationvalues".format(self.getName()))
+            _ClientHandler.log_critical("{0}; Error;{1}; can't get/set configurationvalues".format(self.getName(),  e))
             raise
 
     def __del__(self):
@@ -1197,33 +1197,33 @@ class cht_proxy_daemon(cthread, cproxyconfig):
         # start debug_thread with current loglevel
         thread_debug= cthread_debug(_ClientHandler.loglevel())
         thread_debug.start()
-        
+
         while _restart_loop > 0 and _restart:
             if _first_call:
-                _ClientHandler.log_info("{}; start as proxy-server:'{}';port:'{}'".format(self.getName(), self._ip_address, self._port_number))
+                _ClientHandler.log_info("{0}; start as proxy-server:'{1}';port:'{2}'".format(self.getName(), self._ip_address, self._port_number))
                 _first_call = False
             else:
                 _serialdevice_initialised=[]
                 self._ht_transceiver_if=[]
-                _ClientHandler.log_info("{}; restart as proxy-server:'{}';port:'{}'".format(self.getName(), self._ip_address, self._port_number))
-                
+                _ClientHandler.log_info("{0}; restart as proxy-server:'{1}';port:'{2}'".format(self.getName(), self._ip_address, self._port_number))
+
             for devicename in self.devicename_keys():
                 if self.devicename_initflag(devicename) == 0:
                     # check for already initialised serial device, if not then start transceiver_if for this device
                     serialdevice   = self.transceiver_serialdevice(devicename)
-                    if not serialdevice in (_serialdevice_initialised):
+                    if serialdevice not in (_serialdevice_initialised):
                         baudrate       = self.transceiver_baudrate(devicename)
                         devicetype     = self.transceiver_devicetype(devicename)
                         if self._IsPortAvailable(serialdevice, baudrate):
                             try:
-                                _ClientHandler.log_info("{}; using serial device:'{}'; baudrate:'{}'".format(self.getName(), serialdevice, baudrate))
+                                _ClientHandler.log_info("{0}; using serial device:'{1}'; baudrate:'{2}'".format(self.getName(), serialdevice, baudrate))
                                 # create object 'transceiver-if' for that 'serial device'
                                 transceiver_if = cht_transceiver_if(serialdevice, baudrate, devicetype)
                                 # start 'transceiver-if'-thread
                                 transceiver_if.start()
-                            except:
+                            except Exception as e:
                                 transceiver_if.stop()
-                                _ClientHandler.log_critical("{}; Error; can't open serial device:'{}'; baudrate:'{}'".format(self.getName(), serialdevice, baudrate))
+                                _ClientHandler.log_critical("{0}; Error;{1}; can't open serial device:'{2}'; baudrate:'{3}'".format(self.getName(), e,  serialdevice, baudrate))
                                 break
                             else:
                                 time.sleep(1.0)
@@ -1237,10 +1237,10 @@ class cht_proxy_daemon(cthread, cproxyconfig):
                                     self.devicename_initflag(devicename, 1)
                                     _restart_loop = 50
                                 else:
-                                    _ClientHandler.log_critical("{}; Error; transceiver_if:'{}'; not alive".format(self.getName(), id(transceiver_if)))
+                                    _ClientHandler.log_critical("{0}; Error; transceiver_if:'{1}'; not alive".format(self.getName(), id(transceiver_if)))
                                     break
                         else:
-                            _ClientHandler.log_critical("{}; Error; serial device:'{}' not available; baudrate:'{}'".format(self.getName(), serialdevice, baudrate))
+                            _ClientHandler.log_critical("{0}; Error; serial device:'{1}' not available; baudrate:'{2}'".format(self.getName(), serialdevice, baudrate))
                             break
 
             if len(_serialdevice_initialised) > 0 and transceiver_if.is_alive():
@@ -1253,17 +1253,17 @@ class cht_proxy_daemon(cthread, cproxyconfig):
                             self._server.join()
                             self._server.server_close()
                         self._server = None
-                            
+
                     # create TCP-server object and start it
                     self._server = cht_TCPserver((self._ip_address, self._port_number))
-                    self._server.allow_reuse_address = True # Prevent 'cannot bind to address' errors on restart
+                    self._server.allow_reuse_address = True   # Prevent 'cannot bind to address' errors on restart
                     self._server.start()
                     time.sleep(1.0)
                     if not self._server.is_alive():
-                        _ClientHandler.log_critical("{}; Error; TCPserver Thread Not alive".format(self.getName()))
+                        _ClientHandler.log_critical("{0}; Error; TCPserver Thread Not alive".format(self.getName()))
                         _restart = False
-                except:
-                    _ClientHandler.log_critical("{}; Error; TCPserver not startable".format(self.getName()))
+                except Exception as e:
+                    _ClientHandler.log_critical("{0}; Error;{1}; TCPserver not startable".format(self.getName(),  e))
                     _restart = False
 
                 if _restart:
@@ -1283,7 +1283,7 @@ class cht_proxy_daemon(cthread, cproxyconfig):
                 time.sleep(2.0)
                 _restart_loop -= 1
 
-        _ClientHandler.log_critical("{}; terminated".format(self.getName()))
+        _ClientHandler.log_critical("{0}; terminated".format(self.getName()))
         _ClientHandler.log_critical("---------------------------")
 
     def get_indexcounter(self):
@@ -1295,15 +1295,14 @@ class cht_proxy_daemon(cthread, cproxyconfig):
         return _ClientHandler.get_clientcounter()
 
     def _IsPortAvailable(self, serialdevice, baudrate):
-        """ returns True if serial-port can be created, else False
-        """
+        """ returns True if serial-port can be created, else False. """
         rtnvalue = False
         try:
             # open serial port for testpurposes
             porthandle = serial.Serial(serialdevice, baudrate)
             porthandle.close()
             rtnvalue = True
-        except:
+        except  Exception:
             rtnvalue = False
         return rtnvalue
 
@@ -1335,40 +1334,40 @@ class cht_socket_client(cproxyconfig, ht_utils.clog):
         #read configfile
         try:
             self.read_config(self._configfile)
-        except:
+        except Exception as e:
             # setup logging-file only for this exception
             _handler=logging.handlers.RotatingFileHandler(self._logfile, maxBytes=1000000)
             _frm = logging.Formatter("%(asctime)s %(levelname)s: %(message)s", "%d.%m.%Y %H:%M:%S")
             _handler.setFormatter(_frm)
-            self._logging     = logging.getLogger(tcp_ip_type)
+            self._logging = logging.getLogger(tcp_ip_type)
             self._logging.addHandler(_handler)
             self._logging.setLevel(loglevel)
 
-            self.log_critical("cht_socket_client();error can't get configurationvalues")
+            self.log_critical("cht_socket_client();Error;{0}; can't get configurationvalues".format(e))
             raise
 
         try:
             self._port_number = self.portnumber()
-            self._logfile     = self.logfilepath()
+            self._logfile = self.logfilepath()
 
             # setup logging-file using class: ht_utils.clog
             ht_utils.clog.__init__(self)
-            self._logging=self.create_logfile(self._logfile, self._loglevel, self._loggertag)
+            self._logging = self.create_logfile(self._logfile, self._loglevel, self._loggertag)
 
             self.log_info("----------------------")
             self.log_info("socket_client; init")
-            if not self.servername() == None:
-                self._ip_address=self.servername()
+            if not self.servername() is None:
+                self._ip_address = self.servername()
             else:
-                if not self.serveraddress() == None:
-                    self._ip_address=self.serveraddress()
+                if not self.serveraddress() is None:
+                    self._ip_address = self.serveraddress()
                 else:
                     error_str = "socket_client.__init__(); Error; no serveraddress defined"
                     self.log_critical(error_str)
                     raise ValueError(error_str)
 
-        except:
-            error_str = "socket_client; Error; can't set configurationvalues"
+        except Exception as e:
+            error_str = "socket_client; Error;{0}; can't set configurationvalues".format(e)
             self.log_critical(error_str)
             raise ValueError(error_str)
 
@@ -1377,8 +1376,8 @@ class cht_socket_client(cproxyconfig, ht_utils.clog):
             self._socket.connect((self._ip_address, self._port_number))
             self.log_info("socket_client; connected to server:'{0}';port:'{1}'".format(self._ip_address, self._port_number))
             self.log_info("socket_client; logfile:'{0}'".format(self._logfile))
-        except:
-            error_str = "socket_client.__init__(); Error; can't connect to socket"
+        except Exception as e:
+            error_str = "socket_client.__init__(); Error;{0}; can't connect to socket".format(e)
             self.log_critical(error_str)
             raise ConnectionRefusedError(error_str)
 
@@ -1402,11 +1401,11 @@ class cht_socket_client(cproxyconfig, ht_utils.clog):
             # read answer from server (client-ID) and store it
             self._clientID=self._socket.recv(10).decode('utf-8')
             ## only for test## print("client got ID:{0}".format(self._clientID))
-        except (ConnectionError, SystemExit) as e:
-            self.log_critical("socket_client.__registration(); Error; {}".format(e))
+        except OSError as e:
+            self.log_critical("socket_client.__registration(); Error;{0}".format(e))
             raise SystemExit(e)
-        except:
-            self.log_critical("socket_client.__registration(); Error; can't register to master")
+        except Exception as e:
+            self.log_critical("socket_client.__registration(); Error;{0}; can't register to master".format(e))
             raise
 
     def run(self):
@@ -1420,9 +1419,9 @@ class cht_socket_client(cproxyconfig, ht_utils.clog):
             while True:
                 antwort=self._socket.recv(1)
                 print("{0}".format(antwort))
-        except:
+        except OSError as e:
             self._socket.close()
-            self.log_critical ("socket_client; Error; Client-ID:{0}; on socket.recv".format(self._clientID))
+            self.log_critical ("socket_client; Error;{0}; Client-ID:{1}; on socket.recv".format(e, self._clientID))
             raise
 
     def close(self):
@@ -1440,46 +1439,44 @@ class cht_socket_client(cproxyconfig, ht_utils.clog):
             self.log_critical(error_str)
             raise SystemExit(error_str)
 
-        read=bytearray()
-        buffer = bytearray()
-        while len(read) < size:
+        rxdata=bytearray()
+        rxbuffer = bytearray()
+        while len(rxdata) < size:
             try:
-                buffer=self._socket.recv(size)
-            except:
-                error_str = "socket_client.read(); Error; Client-ID:{0}; error on socket.recv".format(self._clientID)
+                rxbuffer=self._socket.recv(size)
+            except OSError as e:
+                error_str = "socket_client.read(); Error; Client-ID:{0};Error;{1}".format(self._clientID, e)
                 self.log_critical(error_str)
                 self._socket.close()
                 raise ConnectionError(error_str)
             else:
                 # check for empty buffer and raise if it is empty -->> socket connection broken
-                if len(buffer) == 0:
+                if not rxbuffer:
                     error_str = "socket_client.read(); Error; Client-ID:{0}; peer closed socket".format(self._clientID)
                     self.log_critical(error_str)
-                    raise SystemExit(error_str)
+                    raise SystemError(error_str)
                 else:
-                    read.extend(buffer)
+                    rxdata.extend(rxbuffer)
 
-        return bytes(read)
+        return bytes(rxdata)
 
     def write(self, data):
         """write data to connected socket. It will block
            until all data is written.
         """
-        if self._socket==None:
+        if self._socket is None:
             error_str = "socket_client.write(); Error; Client-ID:{0}; socket not initialised".format(self._clientID)
             self.log_critical(error_str)
             raise SystemExit(error_str)
         try:
             self._socket.sendall(bytes(data))
-        except:
-            error_str = "socket_client.write(); Error; Client-ID:{0}; error on socket.sendall".format(self._clientID)
+        except OSError as e:
+            error_str = "socket_client.write(); Error; Client-ID:{0};Error;{1}".format(self._clientID, e)
             self.log_critical(error_str)
             raise ConnectionError(error_str)
 
     def ip_address(self):
-        """
-            returns the current ip-address
-        """
+        """ returns the current ip-address """
         return self._ip_address
 
     def log_critical(self, logmessage):

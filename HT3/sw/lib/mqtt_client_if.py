@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 #
 #################################################################
-## Copyright (c) 2017 Norbert S. <junky-zs at gmx dot de>
+## Copyright (c) 2017 Norbert S. <junky-zsatgmxdotde>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,6 +27,8 @@
 # Ver:0.4.1  / 2023-09-29 __TopicValue_modify() added and used
 #                          (see issue: #21)
 #                         send only defined values to broker.
+# Ver:0.5    / 2026-03-04 setDaemon() call deprecated,
+#                          set Thread-flag 'daemon' to 'True' instead.
 #################################################################
 
 import xml.etree.ElementTree as ET
@@ -327,7 +329,7 @@ class cmqtt_baseclass(threading.Thread, cmqtt_cfg):
     """
     def __init__(self, cfg_filename):
         """class constructor."""
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         cmqtt_cfg.__init__(self, cfg_filename)
 
         self.__thread_run = True
@@ -694,7 +696,7 @@ class cmqtt_client(cmqtt_baseclass):
             debug = True
         #setup topicnames
         self._create_topicnames()
-        
+
         try:
             # mqtt client initialisation
             init_OK = self.mqtt_init()
@@ -773,7 +775,6 @@ if __name__ == "__main__":
 
     mqtt_client = cmqtt_client(mqtt_cfg_filename, accessnames)
     mqtt_client.set_dataqueues(dataqueues)
-    mqtt_client.setDaemon(True)
 
     print("MQTT broker: address          : '{0}'".format(mqtt_client.cfg_brokeraddress()))
     print("MQTT broker: port             : {0}".format(mqtt_client.cfg_portnumber()))
