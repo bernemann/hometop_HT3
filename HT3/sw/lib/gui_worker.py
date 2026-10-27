@@ -138,6 +138,7 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
             self.__info_calledfirsttime = True
 
             self.__main = tkinter.Tk()
+            self.__main.protocol("WM_DELETE_WINDOW", self.__ende)
             self.__gui_titel_input = titel_input
 
             # Frame 1,2,3 with Buttons
@@ -265,9 +266,11 @@ class gui_cworker(ht_utils.cht_utils, ht_utils.clog):
         """
         # start thread for updating display
         _thread.start_new_thread(self.__anzeigethread, (0,))
-        # run endless
-        while self.__threadrun:
+        # Tk returns when the window closes; never restart a finished mainloop.
+        try:
             self.__main.mainloop()
+        finally:
+            self.__threadrun = False
         return False
 
     def __anzeigethread(self, parameter):
