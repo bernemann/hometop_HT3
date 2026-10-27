@@ -1,4 +1,10 @@
 ## Changelog
+## Unreleased
+`2026-10-27`
+- `reason`: Closing the GUI through the window manager could leave a process consuming one CPU core.
+- `modul `: `HT3/sw/lib/gui_worker.py` now uses the existing close handler and stops the display worker when the event loop exits.
+- `tests `: Regression tests added in `HT3/sw/test/test_gui_shutdown.py`.
+
 ## 0.9
 `2026-03-27` 
 - `reason`: Issue: #33 DHW handling added.  
